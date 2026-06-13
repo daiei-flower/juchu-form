@@ -37,11 +37,12 @@
   .rcpt-sec { font-weight:700; margin:8px 0 3px; }
   .rcpt-tbl.tot .grand td { font-weight:700; background:#fafafa; font-size:13px; }
   .rcpt-note { white-space:pre-wrap; margin-top:6px; color:#333; font-size:11px; }
-  .lhead, .lrow { display:grid; grid-template-columns:80px 1fr 84px 84px 56px 26px; gap:5px; align-items:center; }
+  .lhead, .lrow { display:grid; grid-template-columns:84px minmax(110px,1fr) 80px 80px 52px 66px 34px; gap:7px; align-items:center; }
   .lhead { font-size:11px; color:var(--mut); margin-bottom:3px; }
-  .lrow { margin-bottom:6px; }
-  .lrow .lp-wrap.off { visibility:hidden; }
-  .delbtn { background:#fff; border:1px solid var(--bd); border-radius:6px; cursor:pointer; padding:6px 0; }
+  .lrow { margin-bottom:7px; }
+  .pname-cell { display:flex; }
+  .pname-add { background:#fff; border:1px solid var(--bd); border-radius:6px; cursor:pointer; font-size:12px; color:var(--mut); white-space:nowrap; width:100%; }
+  .delbtn { background:#fff; border:1px solid var(--bd); border-radius:6px; cursor:pointer; padding:6px 0; color:#e5484d; }
   @media (max-width:820px){ .wrap{flex-direction:column;} .preview{position:static; flex:1 1 auto; width:100%; order:2;} .formcol{order:1; width:100%;} }
 </style>
 </head>
@@ -69,7 +70,11 @@
         <tr id="pv_money_row" style="display:none;" class="move"><td class="l">売上金移動</td><td id="pv_money"></td></tr>
       </table>
       <div id="pv_sections"></div>
-      <table class="rcpt-tbl tot"><tr class="grand"><td class="l">総合計額</td><td class="num" id="pv_total">¥0</td></tr></table>
+      <table class="rcpt-tbl tot">
+        <tr><td class="l">小計(税抜)</td><td class="num" id="pv_net">¥0</td></tr>
+        <tr><td class="l">消費税(10%)</td><td class="num" id="pv_tax">¥0</td></tr>
+        <tr class="grand"><td class="l">税込合計</td><td class="num" id="pv_incl">¥0</td></tr>
+      </table>
       <div id="pv_note" class="rcpt-note"></div>
     </div>
   </div>
@@ -92,17 +97,15 @@
       <div class="ofield"><label>性別</label>
         <select name="gender" class="nav"><option value=""></option><option value="男">男</option><option value="女">女</option></select></div>
       <div class="ofield"><label>売上金移動（加賀⇔福井 等）</label><input type="text" name="money_transfer" id="f_money" class="nav" placeholder="例：加賀→福井 ¥30,000"></div>
-      <div class="ofield"><label>税区分</label>
-        <select name="tax_kind" class="nav"><option value="税別">税別</option><option value="税込">税込</option></select></div>
       <div class="ofield"><label>備考</label><textarea name="note" id="f_note" rows="2"></textarea></div>
     </div>
 
     <div class="panel">
       <h2>明細</h2>
-      <div class="lhead"><span>カテゴリ</span><span>品名</span><span>上代(販売額)</span><span>受注額</span><span>本数</span><span></span></div>
+      <div class="lhead"><span>カテゴリ</span><span>品名</span><span>上代(販売額)</span><span>受注額</span><span>本数</span><span>税</span><span></span></div>
       <div id="lines"></div>
       <button type="button" class="btn ghost small" id="addLineBtn">＋ 明細を追加</button>
-      <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。上代(お客様の販売額)は任意です。最後の「本数」でEnterすると明細が追加されます。</div>
+      <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。上代(お客様の販売額)は任意。商品ごとに税別/税込を選べます。行を増やすには「明細を追加」を押してください。</div>
       <div id="lpwarn" style="display:none; font-size:12px; color:#b45309; margin-top:4px;">⚠ 上代（販売額）が受注額を下回っている明細があります。ご確認ください。</div>
     </div>
 
@@ -128,17 +131,21 @@
     const opts = cats.map(c=>`<option value="${c}" ${c===cat?'selected':''}>${c}</option>`).join('');
     row.innerHTML =
       `<select class="nav line_category" name="line_category" aria-label="カテゴリ">${opts}</select>`+
-      `<input class="nav line_product" name="line_product" type="text" placeholder="品名" aria-label="品名">`+
+      `<span class="pname-cell"><button type="button" class="pname-add">＋品名</button>`+
+        `<input class="nav line_product" name="line_product" type="text" placeholder="品名" aria-label="品名" style="display:none"></span>`+
       `<input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代" aria-label="上代(販売額)">`+
       `<input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="受注額" aria-label="受注額">`+
       `<input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1" aria-label="本数">`+
+      `<select class="nav line_tax" name="line_tax" aria-label="税区分"><option value="税別">税別</option><option value="税込">税込</option></select>`+
       `<button type="button" class="delbtn line_del" title="削除" aria-label="この明細を削除">×</button>`;
     linesBox.appendChild(row);
     row.querySelector('.line_del').addEventListener('click',()=>{row.remove();render();});
+    const padd=row.querySelector('.pname-add'), pinp=row.querySelector('.line_product');
+    padd.addEventListener('click',()=>{padd.style.display='none';pinp.style.display='';pinp.focus();});
     row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
     return row;
   }
-  document.getElementById('addLineBtn').addEventListener('click',()=>{const r=makeLine('祭壇');r.querySelector('.line_product').focus();render();});
+  document.getElementById('addLineBtn').addEventListener('click',()=>{const r=makeLine('祭壇');r.querySelector('.line_unit_price').focus();render();});
 
   function setCustList(){
     const list = (deptCustomers[g('f_dept').value] || []);
@@ -156,11 +163,15 @@
     setTxt('pv_souke', g('f_souke').value?(g('f_souke').value+' 家'):'');
     const money=g('f_money').value; g('pv_money_row').style.display=money?'':'none'; setTxt('pv_money',money);
     g('pv_note').textContent=g('f_note').value;
-    const byCat={}; cats.forEach(c=>byCat[c]=[]); let total=0, lpwarn=false;
+    const byCat={}; cats.forEach(c=>byCat[c]=[]); let net=0,tax=0,incl=0, lpwarn=false;
     document.querySelectorAll('.lrow').forEach(row=>{
       const c=row.querySelector('.line_category').value, prod=row.querySelector('.line_product').value;
       const lp=row.querySelector('.line_list_price').value, up=Number(row.querySelector('.line_unit_price').value||0), q=Number(row.querySelector('.line_qty').value||0);
-      const amt=up*q; if(Number(lp)>0&&Number(lp)<up) lpwarn=true; if(prod||up){(byCat[c]=byCat[c]||[]).push({prod,lp,up,q,amt}); total+=amt;}
+      const tk=row.querySelector('.line_tax').value; const amt=up*q;
+      if(Number(lp)>0&&Number(lp)<up) lpwarn=true;
+      if(prod||up){(byCat[c]=byCat[c]||[]).push({prod,lp,up,q,amt});
+        if(tk==='税込'){const n=Math.round(amt/1.1); net+=n; tax+=amt-n; incl+=amt;}
+        else {net+=amt; tax+=Math.round(amt*0.1); incl+=amt+Math.round(amt*0.1);}}
     });
     g('lpwarn').style.display=lpwarn?'':'none';
     const sec=g('pv_sections'); sec.innerHTML='';
@@ -170,18 +181,14 @@
       const head=`<tr><td>品名</td><td>上代</td><td>受注額</td><td>本数</td><td>合計</td></tr>`;
       sec.insertAdjacentHTML('beforeend',`<div class="rcpt-sec">【${SEC_LABEL[c]||c}】</div><table class="rcpt-tbl"><thead>${head}</thead><tbody>${rows}<tr><td class="num" colspan="4"><b>${c} 小計</b></td><td class="num"><b>${yen(sub)}</b></td></tr></tbody></table>`);
     });
-    g('pv_total').textContent=yen(total);
+    setTxt('pv_net',yen(net)); setTxt('pv_tax',yen(tax)); setTxt('pv_incl',yen(incl));
   }
 
   form.addEventListener('keydown',e=>{
     if(e.key!=='Enter') return;
     const t=e.target; if(t.tagName==='TEXTAREA'||t.type==='submit') return;
     e.preventDefault();
-    const navs=Array.from(form.querySelectorAll('.nav')); const i=navs.indexOf(t);
-    if(t.classList.contains('line_qty')){
-      const rows=Array.from(document.querySelectorAll('.lrow'));
-      if(rows[rows.length-1].contains(t)){const r=makeLine('祭壇');render();r.querySelector('.line_category').focus();return;}
-    }
+    const navs=Array.from(form.querySelectorAll('.nav')).filter(el=>el.offsetParent!==null); const i=navs.indexOf(t);
     if(i>=0 && i<navs.length-1){ navs[i+1].focus(); if(navs[i+1].select) try{navs[i+1].select();}catch(_){ } }
   });
   ['input','change'].forEach(ev=>form.addEventListener(ev,render));

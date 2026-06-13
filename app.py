@@ -31,7 +31,8 @@ H = {"souke": "御葬家名", "order_date": "受注日", "service_date": "施行
      "gender": "性別", "money_transfer": "売上金移動",
      "tax_kind": "税区分", "note": "備考"}
 L = {"product": "品名", "rel": "受注書", "category": "カテゴリ",
-     "list_price": "上代金額", "unit_price": "受注額", "qty": "本数", "amount": "合計"}
+     "list_price": "上代金額", "unit_price": "受注額", "qty": "本数",
+     "tax": "税区分", "amount": "合計"}
 
 SOURCES = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))["departments"]
 TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -139,6 +140,7 @@ def create_order(department, header, lines):
                 L["list_price"]: _number(ln.get("list_price")),
                 L["unit_price"]: _number(ln.get("unit_price")),
                 L["qty"]: _number(ln.get("qty")),
+                L["tax"]: _select(ln.get("tax_kind") or "税別"),
             }
             rr = client.post(f"{API}/pages", headers=_headers(),
                              json={"parent": {"database_id": src["order_line"]}, "properties": lp})
@@ -235,9 +237,10 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
     department = f.get("department") or ""
     header = {k: (f.get(k) or None) for k in
               ("souke", "order_date", "service_date", "teardown_date", "customer",
-               "venue", "gender", "money_transfer", "tax_kind", "note")}
+               "venue", "gender", "money_transfer", "note")}
     cats, prods = f.getlist("line_category"), f.getlist("line_product")
     lps, ups, qtys = f.getlist("line_list_price"), f.getlist("line_unit_price"), f.getlist("line_qty")
+    taxes = f.getlist("line_tax")
     lines = []
     for i in range(len(cats)):
         prod = prods[i] if i < len(prods) else ""
@@ -246,7 +249,8 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
             continue
         lines.append({"category": cats[i], "product": prod,
                       "list_price": lps[i] if i < len(lps) else "",
-                      "unit_price": up, "qty": (qtys[i] if i < len(qtys) else "") or 1})
+                      "unit_price": up, "qty": (qtys[i] if i < len(qtys) else "") or 1,
+                      "tax_kind": (taxes[i] if i < len(taxes) else "") or "税別"})
     action = f.get("action") or "save"
     try:
         create_order(department, header, lines)
@@ -274,23 +278,25 @@ def _build_d(department, header, lines):
         qy = _num(l.get("qty")) or 1
         norm.append({"category": _normcat(l.get("category")), "product": l.get("product"),
                      "list_price": l.get("list_price"), "unit_price": up, "qty": qy,
-                     "amount": up * qy})
+                     "amount": up * qy, "tax_kind": l.get("tax_kind") or "税別"})
     groups = {c: [l for l in norm if l["category"] == c] for c in CATEGORIES}
     totals = {c: sum(l["amount"] for l in groups[c]) for c in CATEGORIES}
     other = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
     grand = sum(totals.values())
     return {"header": {**header, "department": department}, "groups": groups,
             "totals": totals, "other_total": other, "grand_total": grand,
-            "tax": _tax_breakdown(header.get("tax_kind"), grand)}
+            "tax": _tax_from_lines(norm)}
 
 
-def _tax_breakdown(tax_kind, grand_total, rate=0.10):
-    g = grand_total or 0
-    if (tax_kind or "税別") == "税込":
-        net = round(g / (1 + rate))
-        return {"kind": "税込", "net": net, "tax": round(g - net), "incl": round(g)}
-    tax = round(g * rate)
-    return {"kind": "税別", "net": round(g), "tax": tax, "incl": round(g + tax)}
+def _tax_from_lines(lines, rate=0.10):
+    net = tax = incl = 0
+    for l in lines:
+        amt = l.get("amount") or 0
+        if (l.get("tax_kind") or "税別") == "税込":
+            n = round(amt / (1 + rate)); net += n; tax += round(amt - n); incl += round(amt)
+        else:
+            net += round(amt); tax += round(amt * rate); incl += round(amt + amt * rate)
+    return {"net": net, "tax": tax, "incl": incl}
 
 
 def _num(x):
@@ -320,6 +326,7 @@ def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
                 lp = it.get("properties", {})
                 lines.append({"category": _pget(lp, L["category"]),
                               "product": _pget(lp, L["product"]),
+                              "tax_kind": _pget(lp, L["tax"]),
                               "list_price": _pget(lp, L["list_price"]),
                               "unit_price": _pget(lp, L["unit_price"]),
                               "qty": _pget(lp, L["qty"])})
