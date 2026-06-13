@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: juchu-form
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: NOTION_TOKEN
+        sync: false   # ダッシュボードで秘匿値として登録
+      - key: FORM_PASSWORD
+        sync: false
+      - key: FORM_USER
+        value: staff

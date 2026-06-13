@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>受注書入力</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; position:sticky; top:0; z-index:10; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:1100px; margin:0 auto; padding:16px; display:flex; gap:18px; align-items:flex-start; }
+  .preview { flex:0 0 40%; position:sticky; top:70px; }
+  .formcol { flex:1 1 60%; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .panel h2 { font-size:14px; margin:0 0 10px; }
+  .ofield { margin-bottom:9px; }
+  .ofield label { display:block; font-size:12px; color:var(--mut); margin-bottom:3px; }
+  input, select, textarea { width:100%; padding:8px 9px; border:1px solid var(--bd); border-radius:7px; font-size:14px; background:#fff; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--pribg); border-color:var(--pri); }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:5px 10px; font-size:13px; }
+  .msg { padding:10px 14px; border-radius:8px; margin:14px auto 0; max-width:1100px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+  .rcpt { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; font-size:12px; }
+  .rcpt-top { display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px; }
+  .rcpt-title { text-align:center; font-size:16px; margin:2px 0 10px; letter-spacing:2px; }
+  .rcpt-tbl { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  .rcpt-tbl td { border:1px solid #999; padding:4px 7px; }
+  .rcpt-tbl td.l { background:#eee; width:88px; white-space:nowrap; font-weight:600; }
+  .rcpt-tbl .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .rcpt-tbl .move td { background:#fff8e1; }
+  .rcpt-sec { font-weight:700; margin:8px 0 3px; }
+  .rcpt-tbl.tot .grand td { font-weight:700; background:#fafafa; font-size:13px; }
+  .rcpt-note { white-space:pre-wrap; margin-top:6px; color:#333; font-size:11px; }
+  .lhead, .lrow { display:grid; grid-template-columns:80px 1fr 84px 84px 56px 26px; gap:5px; align-items:center; }
+  .lhead { font-size:11px; color:var(--mut); margin-bottom:3px; }
+  .lrow { margin-bottom:6px; }
+  .lrow .lp-wrap.off { visibility:hidden; }
+  .delbtn { background:#fff; border:1px solid var(--bd); border-radius:6px; cursor:pointer; padding:6px 0; }
+  @media (max-width:820px){ .wrap{flex-direction:column;} .preview{position:static; flex:1 1 auto; width:100%; order:2;} .formcol{order:1; width:100%;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>受注書入力フォーム</h1>
+  <div class="sub">入力すると Notion に保存されます（経営者が集計します）。Enterキーで次の項目へ。</div>
+</header>
+
+{% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="msg ng">登録に失敗：{{ err }}</div>{% endif %}
+
+<form method="post" action="/create" id="orderForm">
+<div class="wrap">
+
+  <div class="preview">
+    <div class="rcpt">
+      <div class="rcpt-top"><span>受注事業所：<strong id="pv_dept">{{ department }}</strong></span><span id="pv_orderdate"></span></div>
+      <div class="rcpt-title">施行受注書</div>
+      <table class="rcpt-tbl">
+        <tr><td class="l">施行予定日時</td><td id="pv_service"></td></tr>
+        <tr><td class="l">得意先様名</td><td id="pv_customer"></td></tr>
+        <tr><td class="l">式場・住所</td><td id="pv_venue"></td></tr>
+        <tr><td class="l">御葬家名</td><td id="pv_souke"></td></tr>
+        <tr id="pv_money_row" style="display:none;" class="move"><td class="l">売上金移動</td><td id="pv_money"></td></tr>
+      </table>
+      <div id="pv_sections"></div>
+      <table class="rcpt-tbl tot"><tr class="grand"><td class="l">総合計額</td><td class="num" id="pv_total">¥0</td></tr></table>
+      <div id="pv_note" class="rcpt-note"></div>
+    </div>
+  </div>
+
+  <div class="formcol">
+    <div class="panel">
+      <h2>基本情報</h2>
+      <div class="ofield"><label>部門</label>
+        <select name="department" id="f_dept" class="nav">
+          {% for d in departments %}<option value="{{ d }}" {{ 'selected' if d==department else '' }}>{{ d }}</option>{% endfor %}
+        </select></div>
+      <div class="ofield"><label>御葬家名</label><input type="text" name="souke" id="f_souke" class="nav" placeholder="例：田中"></div>
+      <div class="ofield"><label>受注日</label><input type="date" name="order_date" class="nav" value="{{ today }}"></div>
+      <div class="ofield"><label>施行予定日</label><input type="date" name="service_date" id="f_service" class="nav" value="{{ today }}"></div>
+      <div class="ofield"><label>撤収予定日</label><input type="date" name="teardown_date" class="nav"></div>
+      <div class="ofield"><label>得意先（葬儀社）</label>
+        <input type="text" name="customer" id="f_customer" class="nav" list="soshisha_list" placeholder="例：典礼">
+        <datalist id="soshisha_list">{% for s in soshisha %}<option value="{{ s }}">{% endfor %}</datalist></div>
+      <div class="ofield"><label>式場・住所</label><input type="text" name="venue" id="f_venue" class="nav"></div>
+      <div class="ofield"><label>性別</label>
+        <select name="gender" class="nav"><option value=""></option><option value="男">男</option><option value="女">女</option></select></div>
+      <div class="ofield"><label>ご担当者</label><input type="text" name="person" class="nav"></div>
+      <div class="ofield"><label>売上金移動（加賀⇔福井 等）</label><input type="text" name="money_transfer" id="f_money" class="nav" placeholder="例：加賀→福井 ¥30,000"></div>
+      <div class="ofield"><label>税区分</label>
+        <select name="tax_kind" class="nav"><option value="税別">税別</option><option value="税込">税込</option></select></div>
+      <div class="ofield"><label>備考</label><textarea name="note" id="f_note" rows="2"></textarea></div>
+    </div>
+
+    <div class="panel">
+      <h2>明細</h2>
+      <div class="lhead"><span>カテゴリ</span><span>品名</span><span>上代(原価)</span><span>受注額</span><span>本数</span><span></span></div>
+      <div id="lines"></div>
+      <button type="button" class="btn ghost small" id="addLineBtn">＋ 明細を追加</button>
+      <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。供花は上代(原価)も入れると粗利が出ます。最後の「本数」でEnterすると明細が追加されます。</div>
+    </div>
+
+    <button type="submit" class="btn" id="saveBtn">受注書を保存（Notionへ）</button>
+  </div>
+</div>
+</form>
+
+<script>
+(function(){
+  const cats = {{ categories | tojson }};
+  const yen = v => { v=Number(v||0); return '¥'+new Intl.NumberFormat('ja-JP').format(Math.round(v)); };
+  const linesBox = document.getElementById('lines');
+  const form = document.getElementById('orderForm');
+  const g = id => document.getElementById(id);
+
+  function makeLine(cat){
+    const row = document.createElement('div'); row.className='lrow';
+    const opts = cats.map(c=>`<option value="${c}" ${c===cat?'selected':''}>${c}</option>`).join('');
+    row.innerHTML =
+      `<select class="nav line_category" name="line_category">${opts}</select>`+
+      `<input class="nav line_product" name="line_product" type="text" placeholder="品名">`+
+      `<span class="lp-wrap"><input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代"></span>`+
+      `<input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="受注額">`+
+      `<input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1">`+
+      `<button type="button" class="delbtn line_del" title="削除">×</button>`;
+    linesBox.appendChild(row);
+    row.querySelector('.line_del').addEventListener('click',()=>{row.remove();render();});
+    row.querySelector('.line_category').addEventListener('change',()=>{toggleLp(row);render();});
+    row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
+    toggleLp(row); return row;
+  }
+  function toggleLp(row){ row.querySelector('.lp-wrap').classList.toggle('off', row.querySelector('.line_category').value!=='供花'); }
+  document.getElementById('addLineBtn').addEventListener('click',()=>{const r=makeLine('祭壇');r.querySelector('.line_product').focus();render();});
+
+  function setTxt(id,v){ g(id).textContent=v||''; }
+  function render(){
+    setTxt('pv_dept', g('f_dept').value);
+    setTxt('pv_orderdate', form.order_date.value?('受注日：'+form.order_date.value):'');
+    setTxt('pv_service', g('f_service').value);
+    setTxt('pv_customer', g('f_customer').value?(g('f_customer').value+' 様'):'');
+    setTxt('pv_venue', g('f_venue').value);
+    setTxt('pv_souke', g('f_souke').value?(g('f_souke').value+' 家'):'');
+    const money=g('f_money').value; g('pv_money_row').style.display=money?'':'none'; setTxt('pv_money',money);
+    g('pv_note').textContent=g('f_note').value;
+    const byCat={}; cats.forEach(c=>byCat[c]=[]); let total=0;
+    document.querySelectorAll('.lrow').forEach(row=>{
+      const c=row.querySelector('.line_category').value, prod=row.querySelector('.line_product').value;
+      const lp=row.querySelector('.line_list_price').value, up=Number(row.querySelector('.line_unit_price').value||0), q=Number(row.querySelector('.line_qty').value||0);
+      const amt=up*q; if(prod||up){byCat[c].push({prod,lp,up,q,amt}); total+=amt;}
+    });
+    const sec=g('pv_sections'); sec.innerHTML='';
+    const labels={'祭壇':'祭壇情報','OP':'オプション・付属品','供花':'供花情報','その他':'その他'};
+    ['祭壇','OP','供花','その他'].forEach(c=>{
+      const items=byCat[c]||[]; if(!items.length) return; let sub=0;
+      const rows=items.map(it=>{sub+=it.amt; return `<tr><td>${it.prod||''}</td>${c==='供花'?`<td class="num">${it.lp?yen(it.lp):''}</td>`:''}<td class="num">${it.up?yen(it.up):''}</td><td class="num">${it.q||''}</td><td class="num">${it.amt?yen(it.amt):''}</td></tr>`;}).join('');
+      const head=`<tr><td>品名</td>${c==='供花'?'<td>上代</td>':''}<td>受注額</td><td>本数</td><td>合計</td></tr>`;
+      sec.insertAdjacentHTML('beforeend',`<div class="rcpt-sec">【${labels[c]}】</div><table class="rcpt-tbl"><thead>${head}</thead><tbody>${rows}<tr><td class="num" colspan="${c==='供花'?4:3}"><b>${c} 小計</b></td><td class="num"><b>${yen(sub)}</b></td></tr></tbody></table>`);
+    });
+    g('pv_total').textContent=yen(total);
+  }
+
+  form.addEventListener('keydown',e=>{
+    if(e.key!=='Enter') return;
+    const t=e.target; if(t.tagName==='TEXTAREA'||t.type==='submit') return;
+    e.preventDefault();
+    const navs=Array.from(form.querySelectorAll('.nav')); const i=navs.indexOf(t);
+    if(t.classList.contains('line_qty')){
+      const rows=Array.from(document.querySelectorAll('.lrow'));
+      if(rows[rows.length-1].contains(t)){const r=makeLine('祭壇');render();r.querySelector('.line_category').focus();return;}
+    }
+    if(i>=0 && i<navs.length-1){ navs[i+1].focus(); if(navs[i+1].select) try{navs[i+1].select();}catch(_){ } }
+  });
+  ['input','change'].forEach(ev=>form.addEventListener(ev,render));
+  makeLine('祭壇'); render();
+})();
+</script>
+</body>
+</html>
