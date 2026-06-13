@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>施行受注書 {{ d.header.souke or '' }}</title>
+<style>
+  @page { size: A4 portrait; margin: 9mm; }
+  * { box-sizing: border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; color:#111; margin:0; background:#eee; font-size:11px; }
+  .toolbar { padding:10px 14px; background:#fff; border-bottom:1px solid #ccc; position:sticky; top:0; }
+  .toolbar button { padding:8px 18px; font-size:14px; cursor:pointer; }
+  #sheet { width:192mm; min-height:279mm; margin:14px auto; background:#fff; transform-origin:top left; }
+  h1 { text-align:center; font-size:18px; margin:2px 0 8px; letter-spacing:2px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:6px; }
+  th, td { border:1px solid #333; padding:3px 6px; vertical-align:middle; }
+  th { background:#f3f3f3; font-weight:600; }
+  .lbl { background:#f3f3f3; font-weight:600; width:96px; white-space:nowrap; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .sec { font-weight:700; margin:7px 0 2px; }
+  .top { display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; }
+  .totals td { font-size:12px; }
+  .grand td { font-weight:700; background:#fafafa; }
+  .move td { background:#fff8e1; }
+  .sign td { height:40px; }
+  .cols { display:flex; gap:8px; align-items:flex-start; }
+  .cols .totals { flex:1; } .cols .signbox { flex:0 0 46%; }
+  @media print { .toolbar { display:none; } body { background:#fff; } #sheet { margin:0; width:auto; min-height:auto; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="doPrint()">🖨 A4縦1枚で印刷する</button>　<a href="/">← 入力に戻る</a></div>
+
+<div id="sheet">
+  <div class="top">
+    <span>受注事業所：<strong>{{ d.header.department }}</strong></span>
+    <span>受注日：{{ d.header.order_date or '　　　年　　月　　日' }}</span>
+  </div>
+  <h1>施行受注書</h1>
+
+  <table>
+    <tr><td class="lbl">施行予定日時</td><td>{{ d.header.service_date or '' }}</td>
+        <td class="lbl">撤収予定日時</td><td>{{ d.header.teardown_date or '' }}</td></tr>
+    <tr><td class="lbl">得意先様名</td><td>{{ d.header.customer or '' }} 様</td>
+        <td class="lbl">式場・住所</td><td>{{ d.header.venue or '' }}</td></tr>
+    <tr><td class="lbl">御葬家名</td><td>{{ d.header.souke or '' }}{% if d.header.souke %} 家{% endif %}</td>
+        <td class="lbl">性別</td><td>{{ d.header.gender or '' }}</td></tr>
+    {% if d.header.money_transfer %}
+    <tr class="move"><td class="lbl">売上金移動</td><td colspan="3">{{ d.header.money_transfer }}（※経理報告事項）</td></tr>
+    {% endif %}
+  </table>
+
+  {% if d.header.note %}<div class="sec">【備考】</div><table><tr><td>{{ d.header.note }}</td></tr></table>{% endif %}
+
+  {% for cat in categories %}
+  {% if d.groups[cat] %}
+  <div class="sec">【{{ '祭壇情報' if cat=='祭壇' else ('オプション・付属品' if cat=='オプション' else (cat+'情報')) }}】</div>
+  <table>
+    <thead><tr><th>品名</th><th>上代(販売額)</th><th>受注額(単価)</th><th>本数</th><th>合計</th></tr></thead>
+    <tbody>
+      {% for l in d.groups[cat] %}
+      <tr>
+        <td>{{ l.product or '' }}</td>
+        <td class="num">{{ fmt_money(l.list_price) if l.list_price else '' }}</td>
+        <td class="num">{{ fmt_money(l.unit_price) if l.unit_price else '' }}</td>
+        <td class="num">{{ fmt_money(l.qty) if l.qty else '' }}</td>
+        <td class="num">{{ fmt_money(l.amount) if l.amount else '' }}</td>
+      </tr>
+      {% endfor %}
+      <tr><td class="num" colspan="4"><strong>{{ cat }} 小計</strong></td><td class="num"><strong>{{ fmt_money(d.totals[cat]) }}</strong></td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+  {% endfor %}
+
+  <div class="cols">
+    <table class="totals">
+      <tr><td class="lbl">祭壇受注額</td><td class="num">{{ fmt_money(d.totals['祭壇']) }}</td></tr>
+      <tr><td class="lbl">供花売上合計額</td><td class="num">{{ fmt_money(d.totals['供花']) }}</td></tr>
+      <tr><td class="lbl">その他売上合計額</td><td class="num">{{ fmt_money(d.other_total) }}</td></tr>
+      <tr class="grand"><td class="lbl">総合計額</td><td class="num">{{ fmt_money(d.grand_total) }}</td></tr>
+    </table>
+    <table class="signbox">
+      <tr><th>施行担当</th><th>最終確認</th><th>経理</th></tr>
+      <tr class="sign"><td></td><td></td><td></td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+  function fit(){
+    const sheet = document.getElementById('sheet');
+    sheet.style.transform = 'none';
+    const maxH = 1045;
+    const h = sheet.scrollHeight;
+    if (h > maxH) sheet.style.transform = 'scale(' + (maxH / h).toFixed(4) + ')';
+  }
+  function doPrint(){ fit(); setTimeout(() => window.print(), 50); }
+  window.addEventListener('beforeprint', fit);
+  if (new URLSearchParams(location.search).get('auto') === '1') {
+    window.addEventListener('load', () => setTimeout(doPrint, 300));
+  }
+</script>
+</body>
+</html>

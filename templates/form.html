@@ -99,13 +99,16 @@
 
     <div class="panel">
       <h2>明細</h2>
-      <div class="lhead"><span>カテゴリ</span><span>品名</span><span>上代(原価)</span><span>受注額</span><span>本数</span><span></span></div>
+      <div class="lhead"><span>カテゴリ</span><span>品名</span><span>上代(販売額)</span><span>受注額</span><span>本数</span><span></span></div>
       <div id="lines"></div>
       <button type="button" class="btn ghost small" id="addLineBtn">＋ 明細を追加</button>
-      <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。供花は上代(原価)も入れると粗利が出ます。最後の「本数」でEnterすると明細が追加されます。</div>
+      <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。上代(お客様の販売額)は任意です。最後の「本数」でEnterすると明細が追加されます。</div>
     </div>
 
-    <button type="submit" class="btn" id="saveBtn">受注書を保存（Notionへ）</button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="submit" name="action" value="save" class="btn" id="saveBtn">受注書を保存</button>
+      <button type="submit" name="action" value="print" class="btn ghost" id="printBtn">保存してA4印刷</button>
+    </div>
   </div>
 </div>
 </form>

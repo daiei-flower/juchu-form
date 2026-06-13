@@ -29,7 +29,7 @@ H = {"souke": "御葬家名", "order_date": "受注日", "service_date": "施行
      "gender": "性別", "money_transfer": "売上金移動",
      "tax_kind": "税区分", "note": "備考"}
 L = {"product": "品名", "rel": "受注書", "category": "カテゴリ",
-     "list_price": "上代金額", "unit_price": "受注額", "qty": "本数"}
+     "list_price": "上代金額", "unit_price": "受注額", "qty": "本数", "amount": "合計"}
 
 SOURCES = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))["departments"]
 TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -122,6 +122,39 @@ def create_order(department, header, lines):
     return hid
 
 
+def _pget(props, name):
+    p = props.get(name) or {}
+    t = p.get("type")
+    if t == "title":
+        return "".join(r.get("plain_text", "") for r in p.get("title", []))
+    if t == "rich_text":
+        return "".join(r.get("plain_text", "") for r in p.get("rich_text", []))
+    if t == "select":
+        return (p.get("select") or {}).get("name")
+    if t == "number":
+        return p.get("number")
+    if t == "date":
+        return (p.get("date") or {}).get("start")
+    if t == "formula":
+        f = p.get("formula") or {}
+        return f.get(f.get("type"))
+    return None
+
+
+def _normcat(c):
+    c = (c or "").strip()
+    if c in ("OP", "ＯＰ"):
+        return "オプション"
+    return c if c in CATEGORIES else "その他"
+
+
+def _dept_of(header_db_id):
+    for d, src in SOURCES.items():
+        if src.get("order_header") == header_db_id:
+            return d
+    return None
+
+
 def _select_options(db_id, prop_name):
     """指定DBのselectプロパティの現存オプション名一覧（候補の自動追記用）。"""
     if not (TOKEN and db_id):
@@ -189,10 +222,56 @@ async def create(request: Request, _u: str = Depends(auth)):
         lines.append({"category": cats[i], "product": prod,
                       "list_price": lps[i] if i < len(lps) else "",
                       "unit_price": up, "qty": (qtys[i] if i < len(qtys) else "") or 1})
+    action = f.get("action") or "save"
     try:
-        create_order(department, header, lines)
+        hid = create_order(department, header, lines)
+        if action == "print":
+            return RedirectResponse(f"/print/{hid}?auto=1", status_code=303)
         m = quote(f"{header.get('souke') or ''}家 の受注書を登録しました")
         return RedirectResponse(f"/?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/?department={quote(department)}&err={quote(str(e))}",
                                 status_code=303)
+
+
+@app.get("/print/{page_id}", response_class=HTMLResponse)
+def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
+    """登録済み受注書をA4縦1枚で印刷（Notionから読み出し）。"""
+    with httpx.Client(timeout=30) as client:
+        rp = client.get(f"{API}/pages/{page_id}", headers=_headers())
+        if rp.status_code != 200:
+            return HTMLResponse("受注書が見つかりません。", status_code=404)
+        page = rp.json()
+        hp = page.get("properties", {})
+        dept = _dept_of((page.get("parent") or {}).get("database_id")) or ""
+        line_db = SOURCES.get(dept, {}).get("order_line")
+        lines = []
+        if line_db:
+            rq = client.post(f"{API}/databases/{line_db}/query", headers=_headers(),
+                             json={"filter": {"property": L["rel"],
+                                              "relation": {"contains": page_id}}, "page_size": 100})
+            for it in rq.json().get("results", []):
+                lp = it.get("properties", {})
+                up = _pget(lp, L["unit_price"]) or 0
+                qy = _pget(lp, L["qty"]) or 0
+                amt = _pget(lp, L["amount"])
+                lines.append({"category": _normcat(_pget(lp, L["category"])),
+                              "product": _pget(lp, L["product"]),
+                              "list_price": _pget(lp, L["list_price"]),
+                              "unit_price": up, "qty": qy,
+                              "amount": amt if amt is not None else (up * qy)})
+    header = {"department": dept, "order_date": _pget(hp, H["order_date"]),
+              "service_date": _pget(hp, H["service_date"]), "teardown_date": _pget(hp, H["teardown_date"]),
+              "customer": _pget(hp, H["customer"]), "venue": _pget(hp, H["venue"]),
+              "souke": _pget(hp, H["souke"]), "gender": _pget(hp, H["gender"]),
+              "money_transfer": _pget(hp, H["money_transfer"]), "note": _pget(hp, H["note"])}
+    groups = {c: [l for l in lines if l["category"] == c] for c in CATEGORIES}
+    totals = {c: sum(l["amount"] or 0 for l in groups[c]) for c in CATEGORIES}
+    other_total = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
+    d = {"header": header, "groups": groups, "totals": totals,
+         "other_total": other_total, "grand_total": sum(totals.values())}
+
+    def fmt_money(v):
+        return format(int(round(v or 0)), ",")
+    return templates.TemplateResponse("print.html", {
+        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": fmt_money})
