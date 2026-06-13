@@ -38,6 +38,7 @@ SOURCES = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))["depar
 TOKEN = os.environ.get("NOTION_TOKEN", "")
 PASSWORD = os.environ.get("FORM_PASSWORD", "")
 USER = os.environ.get("FORM_USER", "staff")
+COMPANY = os.environ.get("COMPANY_NAME", "株式会社大栄フラワーサービス福井")
 
 app = FastAPI(title="受注書入力フォーム")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -259,7 +260,7 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
             d = _build_d(department, header, lines)
             return templates.TemplateResponse("print.html", {
                 "request": request, "d": d, "categories": CATEGORIES,
-                "fmt_money": _fmt_money, "autoprint": True})
+                "fmt_money": _fmt_money, "autoprint": True, "company_name": COMPANY})
         m = quote(f"{header.get('souke') or ''}家 の受注書を登録しました")
         return RedirectResponse(f"/?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
@@ -338,4 +339,5 @@ def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
               "tax_kind": _pget(hp, H["tax_kind"])}
     d = _build_d(dept, header, lines)
     return templates.TemplateResponse("print.html", {
-        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": _fmt_money})
+        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": _fmt_money,
+        "company_name": COMPANY})
