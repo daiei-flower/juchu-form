@@ -11,7 +11,9 @@
 import json
 import os
 import secrets
+import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request, Depends, HTTPException, status
@@ -41,13 +43,36 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 security = HTTPBasic()
 
 
-def auth(creds: HTTPBasicCredentials = Depends(security)):
+_fails = {}  # ip -> [失敗時刻...] 認証総当たり対策（単一インスタンス前提の簡易版）
+_FAIL_WINDOW = 300   # 秒
+_FAIL_MAX = 10       # この回数を超えたら一時ロック
+
+
+def auth(request: Request, creds: HTTPBasicCredentials = Depends(security)):
+    ip = (request.client.host if request.client else "?")
+    now = time.monotonic()
+    recent = [t for t in _fails.get(ip, []) if now - t < _FAIL_WINDOW]
+    if len(recent) >= _FAIL_MAX:
+        _fails[ip] = recent
+        raise HTTPException(status_code=429, detail="試行回数が多すぎます。しばらく待ってください。")
     ok_u = secrets.compare_digest(creds.username, USER)
     ok_p = bool(PASSWORD) and secrets.compare_digest(creds.password, PASSWORD)
     if not (ok_u and ok_p):
+        recent.append(now)
+        _fails[ip] = recent
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="認証が必要です", headers={"WWW-Authenticate": "Basic"})
+    _fails.pop(ip, None)
     return creds.username
+
+
+def check_csrf(request: Request):
+    """POSTのCSRF対策：Origin/Refererのホストが自分自身と一致することを要求。"""
+    host = request.headers.get("host", "")
+    origin = request.headers.get("origin") or request.headers.get("referer")
+    if origin:
+        if urlparse(origin).netloc != host:
+            raise HTTPException(status_code=403, detail="不正なリクエスト送信元です。")
 
 
 def _headers():
@@ -203,7 +228,7 @@ def form(request: Request, department: str = "", msg: str = "", err: str = "",
 
 
 @app.post("/create")
-async def create(request: Request, _u: str = Depends(auth)):
+async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
     from urllib.parse import quote
     from fastapi.responses import RedirectResponse
     f = await request.form()
@@ -253,8 +278,19 @@ def _build_d(department, header, lines):
     groups = {c: [l for l in norm if l["category"] == c] for c in CATEGORIES}
     totals = {c: sum(l["amount"] for l in groups[c]) for c in CATEGORIES}
     other = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
+    grand = sum(totals.values())
     return {"header": {**header, "department": department}, "groups": groups,
-            "totals": totals, "other_total": other, "grand_total": sum(totals.values())}
+            "totals": totals, "other_total": other, "grand_total": grand,
+            "tax": _tax_breakdown(header.get("tax_kind"), grand)}
+
+
+def _tax_breakdown(tax_kind, grand_total, rate=0.10):
+    g = grand_total or 0
+    if (tax_kind or "税別") == "税込":
+        net = round(g / (1 + rate))
+        return {"kind": "税込", "net": net, "tax": round(g - net), "incl": round(g)}
+    tax = round(g * rate)
+    return {"kind": "税別", "net": round(g), "tax": tax, "incl": round(g + tax)}
 
 
 def _num(x):
@@ -291,7 +327,8 @@ def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
               "service_date": _pget(hp, H["service_date"]), "teardown_date": _pget(hp, H["teardown_date"]),
               "customer": _pget(hp, H["customer"]), "venue": _pget(hp, H["venue"]),
               "souke": _pget(hp, H["souke"]), "gender": _pget(hp, H["gender"]),
-              "money_transfer": _pget(hp, H["money_transfer"]), "note": _pget(hp, H["note"])}
+              "money_transfer": _pget(hp, H["money_transfer"]), "note": _pget(hp, H["note"]),
+              "tax_kind": _pget(hp, H["tax_kind"])}
     d = _build_d(dept, header, lines)
     return templates.TemplateResponse("print.html", {
         "request": request, "d": d, "categories": CATEGORIES, "fmt_money": _fmt_money})

@@ -103,6 +103,7 @@
       <div id="lines"></div>
       <button type="button" class="btn ghost small" id="addLineBtn">＋ 明細を追加</button>
       <div style="font-size:11px; color:var(--mut); margin-top:6px;">受注額×本数＝合計。上代(お客様の販売額)は任意です。最後の「本数」でEnterすると明細が追加されます。</div>
+      <div id="lpwarn" style="display:none; font-size:12px; color:#b45309; margin-top:4px;">⚠ 上代（販売額）が受注額を下回っている明細があります。ご確認ください。</div>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -126,12 +127,12 @@
     const row = document.createElement('div'); row.className='lrow';
     const opts = cats.map(c=>`<option value="${c}" ${c===cat?'selected':''}>${c}</option>`).join('');
     row.innerHTML =
-      `<select class="nav line_category" name="line_category">${opts}</select>`+
-      `<input class="nav line_product" name="line_product" type="text" placeholder="品名">`+
-      `<input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代">`+
-      `<input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="受注額">`+
-      `<input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1">`+
-      `<button type="button" class="delbtn line_del" title="削除">×</button>`;
+      `<select class="nav line_category" name="line_category" aria-label="カテゴリ">${opts}</select>`+
+      `<input class="nav line_product" name="line_product" type="text" placeholder="品名" aria-label="品名">`+
+      `<input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代" aria-label="上代(販売額)">`+
+      `<input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="受注額" aria-label="受注額">`+
+      `<input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1" aria-label="本数">`+
+      `<button type="button" class="delbtn line_del" title="削除" aria-label="この明細を削除">×</button>`;
     linesBox.appendChild(row);
     row.querySelector('.line_del').addEventListener('click',()=>{row.remove();render();});
     row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
@@ -155,12 +156,13 @@
     setTxt('pv_souke', g('f_souke').value?(g('f_souke').value+' 家'):'');
     const money=g('f_money').value; g('pv_money_row').style.display=money?'':'none'; setTxt('pv_money',money);
     g('pv_note').textContent=g('f_note').value;
-    const byCat={}; cats.forEach(c=>byCat[c]=[]); let total=0;
+    const byCat={}; cats.forEach(c=>byCat[c]=[]); let total=0, lpwarn=false;
     document.querySelectorAll('.lrow').forEach(row=>{
       const c=row.querySelector('.line_category').value, prod=row.querySelector('.line_product').value;
       const lp=row.querySelector('.line_list_price').value, up=Number(row.querySelector('.line_unit_price').value||0), q=Number(row.querySelector('.line_qty').value||0);
-      const amt=up*q; if(prod||up){(byCat[c]=byCat[c]||[]).push({prod,lp,up,q,amt}); total+=amt;}
+      const amt=up*q; if(Number(lp)>0&&Number(lp)<up) lpwarn=true; if(prod||up){(byCat[c]=byCat[c]||[]).push({prod,lp,up,q,amt}); total+=amt;}
     });
+    g('lpwarn').style.display=lpwarn?'':'none';
     const sec=g('pv_sections'); sec.innerHTML='';
     cats.forEach(c=>{
       const items=byCat[c]||[]; if(!items.length) return; let sub=0;
@@ -186,6 +188,26 @@
   g('f_dept').addEventListener('change', setCustList);
   setCustList();
   makeLine('祭壇'); render();
+
+  // 必須チェック＋二重送信防止
+  let submitting = false;
+  form.addEventListener('submit', e => {
+    const hasCustomer = g('f_customer').value.trim();
+    const hasLine = Array.from(document.querySelectorAll('.lrow')).some(r =>
+      r.querySelector('.line_product').value.trim() || Number(r.querySelector('.line_unit_price').value||0) > 0);
+    if (!hasCustomer || !hasLine) {
+      e.preventDefault();
+      alert('得意先と、明細を1件以上入力してください。');
+      return;
+    }
+    if (submitting) { e.preventDefault(); return; }
+    submitting = true;
+    setTimeout(() => {
+      const sb = g('saveBtn'), pb = g('printBtn');
+      if (sb) { sb.disabled = true; sb.textContent = '保存中…'; }
+      if (pb) pb.disabled = true;
+    }, 0);
+  });
 })();
 </script>
 </body>

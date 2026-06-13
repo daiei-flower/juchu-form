@@ -28,7 +28,8 @@
 </style>
 </head>
 <body>
-<div class="toolbar"><button onclick="doPrint()">🖨 A4縦1枚で印刷する</button>　<a href="/">← 入力に戻る</a></div>
+<div class="toolbar"><button onclick="doPrint()">A4縦1枚で印刷する</button>　<a href="/">← 入力に戻る</a>
+  <span id="fitwarn" style="display:none;color:#b45309;font-size:12px;">　※明細が多く文字が小さくなります。明細を整理してください。</span></div>
 
 <div id="sheet">
   <div class="top">
@@ -77,7 +78,9 @@
       <tr><td class="lbl">祭壇受注額</td><td class="num">{{ fmt_money(d.totals['祭壇']) }}</td></tr>
       <tr><td class="lbl">供花売上合計額</td><td class="num">{{ fmt_money(d.totals['供花']) }}</td></tr>
       <tr><td class="lbl">その他売上合計額</td><td class="num">{{ fmt_money(d.other_total) }}</td></tr>
-      <tr class="grand"><td class="lbl">総合計額</td><td class="num">{{ fmt_money(d.grand_total) }}</td></tr>
+      <tr><td class="lbl">小計（{{ d.tax.kind }}）</td><td class="num">{{ fmt_money(d.grand_total) }}</td></tr>
+      <tr><td class="lbl">消費税(10%)</td><td class="num">{{ fmt_money(d.tax.tax) }}</td></tr>
+      <tr class="grand"><td class="lbl">税込合計額</td><td class="num">{{ fmt_money(d.tax.incl) }}</td></tr>
     </table>
     <table class="signbox">
       <tr><th>施行担当</th><th>最終確認</th><th>経理</th></tr>
@@ -90,15 +93,19 @@
   function fit(){
     const sheet = document.getElementById('sheet');
     sheet.style.transform = 'none';
-    const maxH = 1045;
-    const h = sheet.scrollHeight;
-    if (h > maxH) sheet.style.transform = 'scale(' + (maxH / h).toFixed(4) + ')';
+    const maxH = 1045, maxW = 740;
+    const s = Math.min(1, maxH / sheet.scrollHeight, maxW / sheet.scrollWidth);
+    if (s < 1) sheet.style.transform = 'scale(' + s.toFixed(4) + ')';
+    const warn = document.getElementById('fitwarn');
+    if (warn) warn.style.display = (s < 0.72) ? '' : 'none';
   }
-  function doPrint(){ fit(); setTimeout(() => window.print(), 50); }
+  function doPrint(){ fit(); setTimeout(() => window.print(), 80); }
   window.addEventListener('beforeprint', fit);
-  if (new URLSearchParams(location.search).get('auto') === '1'{% if autoprint %} || true{% endif %}) {
-    window.addEventListener('load', () => setTimeout(doPrint, 300));
-  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  window.addEventListener('load', () => {
+    fit();
+    if (new URLSearchParams(location.search).get('auto') === '1'{% if autoprint %} || true{% endif %}) setTimeout(doPrint, 350);
+  });
 </script>
 </body>
 </html>
