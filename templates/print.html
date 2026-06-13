@@ -96,7 +96,7 @@
   }
   function doPrint(){ fit(); setTimeout(() => window.print(), 50); }
   window.addEventListener('beforeprint', fit);
-  if (new URLSearchParams(location.search).get('auto') === '1') {
+  if (new URLSearchParams(location.search).get('auto') === '1'{% if autoprint %} || true{% endif %}) {
     window.addEventListener('load', () => setTimeout(doPrint, 300));
   }
 </script>

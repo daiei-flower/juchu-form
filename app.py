@@ -224,14 +224,44 @@ async def create(request: Request, _u: str = Depends(auth)):
                       "unit_price": up, "qty": (qtys[i] if i < len(qtys) else "") or 1})
     action = f.get("action") or "save"
     try:
-        hid = create_order(department, header, lines)
+        create_order(department, header, lines)
         if action == "print":
-            return RedirectResponse(f"/print/{hid}?auto=1", status_code=303)
+            # 直前の入力内容からそのまま印刷（Notion再取得のラグを避ける）
+            d = _build_d(department, header, lines)
+            return templates.TemplateResponse("print.html", {
+                "request": request, "d": d, "categories": CATEGORIES,
+                "fmt_money": _fmt_money, "autoprint": True})
         m = quote(f"{header.get('souke') or ''}家 の受注書を登録しました")
         return RedirectResponse(f"/?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/?department={quote(department)}&err={quote(str(e))}",
                                 status_code=303)
+
+
+def _fmt_money(v):
+    return format(int(round(v or 0)), ",")
+
+
+def _build_d(department, header, lines):
+    norm = []
+    for l in lines:
+        up = _num(l.get("unit_price"))
+        qy = _num(l.get("qty")) or 1
+        norm.append({"category": _normcat(l.get("category")), "product": l.get("product"),
+                     "list_price": l.get("list_price"), "unit_price": up, "qty": qy,
+                     "amount": up * qy})
+    groups = {c: [l for l in norm if l["category"] == c] for c in CATEGORIES}
+    totals = {c: sum(l["amount"] for l in groups[c]) for c in CATEGORIES}
+    other = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
+    return {"header": {**header, "department": department}, "groups": groups,
+            "totals": totals, "other_total": other, "grand_total": sum(totals.values())}
+
+
+def _num(x):
+    try:
+        return float(x or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 @app.get("/print/{page_id}", response_class=HTMLResponse)
@@ -252,26 +282,16 @@ def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
                                               "relation": {"contains": page_id}}, "page_size": 100})
             for it in rq.json().get("results", []):
                 lp = it.get("properties", {})
-                up = _pget(lp, L["unit_price"]) or 0
-                qy = _pget(lp, L["qty"]) or 0
-                amt = _pget(lp, L["amount"])
-                lines.append({"category": _normcat(_pget(lp, L["category"])),
+                lines.append({"category": _pget(lp, L["category"]),
                               "product": _pget(lp, L["product"]),
                               "list_price": _pget(lp, L["list_price"]),
-                              "unit_price": up, "qty": qy,
-                              "amount": amt if amt is not None else (up * qy)})
-    header = {"department": dept, "order_date": _pget(hp, H["order_date"]),
+                              "unit_price": _pget(lp, L["unit_price"]),
+                              "qty": _pget(lp, L["qty"])})
+    header = {"order_date": _pget(hp, H["order_date"]),
               "service_date": _pget(hp, H["service_date"]), "teardown_date": _pget(hp, H["teardown_date"]),
               "customer": _pget(hp, H["customer"]), "venue": _pget(hp, H["venue"]),
               "souke": _pget(hp, H["souke"]), "gender": _pget(hp, H["gender"]),
               "money_transfer": _pget(hp, H["money_transfer"]), "note": _pget(hp, H["note"])}
-    groups = {c: [l for l in lines if l["category"] == c] for c in CATEGORIES}
-    totals = {c: sum(l["amount"] or 0 for l in groups[c]) for c in CATEGORIES}
-    other_total = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
-    d = {"header": header, "groups": groups, "totals": totals,
-         "other_total": other_total, "grand_total": sum(totals.values())}
-
-    def fmt_money(v):
-        return format(int(round(v or 0)), ",")
+    d = _build_d(dept, header, lines)
     return templates.TemplateResponse("print.html", {
-        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": fmt_money})
+        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": _fmt_money})
