@@ -2,15 +2,37 @@
   "departments": {
     "加賀業務部": {
       "order_header": "37ed8bdf-7f3a-812c-b289-dca0999a2f20",
-      "order_line": "37ed8bdf-7f3a-81c7-bd53-e8246c24cb2e"
+      "order_line": "37ed8bdf-7f3a-81c7-bd53-e8246c24cb2e",
+      "customers": [
+        "ハートフル",
+        "ジェイエイ",
+        "ながやま",
+        "梅林閣"
+      ]
     },
     "福井卸部": {
       "order_header": "37ed8bdf-7f3a-81e2-bd0b-dafd4361fbcc",
-      "order_line": "37ed8bdf-7f3a-81c0-9ba8-f97224475b96"
+      "order_line": "37ed8bdf-7f3a-81c0-9ba8-f97224475b96",
+      "customers": [
+        "花紫",
+        "加賀百万石",
+        "ゆのくに天祥"
+      ]
     },
     "福井業務部": {
       "order_header": "37ed8bdf-7f3a-8136-bef8-eb1a310debac",
-      "order_line": "37ed8bdf-7f3a-81ec-80ff-cfc4fa696796"
+      "order_line": "37ed8bdf-7f3a-81ec-80ff-cfc4fa696796",
+      "customers": [
+        "ダイキ",
+        "典礼",
+        "ワシダ",
+        "花市",
+        "パシオン",
+        "ファミリア",
+        "奥越公益社",
+        "夕葬社",
+        "シオタニ"
+      ]
     }
   }
 }

@@ -21,13 +21,12 @@ from fastapi.templating import Jinja2Templates
 
 BASE = Path(__file__).resolve().parent
 API = "https://api.notion.com/v1"
-CATEGORIES = ["祭壇", "供花", "OP", "その他"]
-SOSHISHA = ["ダイキ", "ワシダ", "典礼", "パシオン", "奥越"]
+CATEGORIES = ["祭壇", "供花", "オプション", "生花", "花束", "アレンジ", "仏花", "その他"]
 
 # Notionプロパティ名（本体アプリと一致）
 H = {"souke": "御葬家名", "order_date": "受注日", "service_date": "施行予定日時",
      "teardown_date": "撤収予定日時", "customer": "得意先", "venue": "式場・住所",
-     "gender": "性別", "person": "ご担当者", "money_transfer": "売上金移動",
+     "gender": "性別", "money_transfer": "売上金移動",
      "tax_kind": "税区分", "note": "備考"}
 L = {"product": "品名", "rel": "受注書", "category": "カテゴリ",
      "list_price": "上代金額", "unit_price": "受注額", "qty": "本数"}
@@ -96,7 +95,6 @@ def create_order(department, header, lines):
             H["customer"]: _select(header.get("customer")),
             H["venue"]: _text(header.get("venue")),
             H["gender"]: _select(header.get("gender")),
-            H["person"]: _text(header.get("person")),
             H["money_transfer"]: _text(header.get("money_transfer")),
             H["tax_kind"]: _select(header.get("tax_kind")),
             H["note"]: _text(header.get("note")),
@@ -124,6 +122,33 @@ def create_order(department, header, lines):
     return hid
 
 
+def _select_options(db_id, prop_name):
+    """指定DBのselectプロパティの現存オプション名一覧（候補の自動追記用）。"""
+    if not (TOKEN and db_id):
+        return []
+    try:
+        with httpx.Client(timeout=20) as client:
+            r = client.get(f"{API}/databases/{db_id}", headers=_headers())
+            if r.status_code != 200:
+                return []
+            p = (r.json().get("properties", {}).get(prop_name) or {})
+            return [o.get("name") for o in (p.get("select", {}).get("options") or [])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _candidates(department):
+    """部門の得意先候補＝固定リスト ∪ Notion現存オプション。"""
+    src = SOURCES.get(department, {})
+    out = list(src.get("customers", []))
+    seen = set(out)
+    for name in _select_options(src.get("order_header"), H["customer"]):
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
@@ -136,9 +161,10 @@ def form(request: Request, department: str = "", msg: str = "", err: str = "",
     depts = list(SOURCES.keys())
     if department not in depts:
         department = depts[0] if depts else ""
+    dept_customers = {d: _candidates(d) for d in depts}
     return templates.TemplateResponse("form.html", {
         "request": request, "departments": depts, "department": department,
-        "soshisha": SOSHISHA, "categories": CATEGORIES,
+        "dept_customers": dept_customers, "categories": CATEGORIES,
         "today": datetime.now().strftime("%Y-%m-%d"), "msg": msg, "err": err,
     })
 
@@ -151,7 +177,7 @@ async def create(request: Request, _u: str = Depends(auth)):
     department = f.get("department") or ""
     header = {k: (f.get(k) or None) for k in
               ("souke", "order_date", "service_date", "teardown_date", "customer",
-               "venue", "gender", "person", "money_transfer", "tax_kind", "note")}
+               "venue", "gender", "money_transfer", "tax_kind", "note")}
     cats, prods = f.getlist("line_category"), f.getlist("line_product")
     lps, ups, qtys = f.getlist("line_list_price"), f.getlist("line_unit_price"), f.getlist("line_qty")
     lines = []

@@ -85,13 +85,12 @@
       <div class="ofield"><label>受注日</label><input type="date" name="order_date" class="nav" value="{{ today }}"></div>
       <div class="ofield"><label>施行予定日</label><input type="date" name="service_date" id="f_service" class="nav" value="{{ today }}"></div>
       <div class="ofield"><label>撤収予定日</label><input type="date" name="teardown_date" class="nav"></div>
-      <div class="ofield"><label>得意先（葬儀社）</label>
-        <input type="text" name="customer" id="f_customer" class="nav" list="soshisha_list" placeholder="例：典礼">
-        <datalist id="soshisha_list">{% for s in soshisha %}<option value="{{ s }}">{% endfor %}</datalist></div>
+      <div class="ofield"><label>得意先</label>
+        <input type="text" name="customer" id="f_customer" class="nav" list="cust_list" placeholder="一覧から選択 or 入力（新規もOK）">
+        <datalist id="cust_list"></datalist></div>
       <div class="ofield"><label>式場・住所</label><input type="text" name="venue" id="f_venue" class="nav"></div>
       <div class="ofield"><label>性別</label>
         <select name="gender" class="nav"><option value=""></option><option value="男">男</option><option value="女">女</option></select></div>
-      <div class="ofield"><label>ご担当者</label><input type="text" name="person" class="nav"></div>
       <div class="ofield"><label>売上金移動（加賀⇔福井 等）</label><input type="text" name="money_transfer" id="f_money" class="nav" placeholder="例：加賀→福井 ¥30,000"></div>
       <div class="ofield"><label>税区分</label>
         <select name="tax_kind" class="nav"><option value="税別">税別</option><option value="税込">税込</option></select></div>
@@ -114,6 +113,7 @@
 <script>
 (function(){
   const cats = {{ categories | tojson }};
+  const deptCustomers = {{ dept_customers | tojson }};
   const yen = v => { v=Number(v||0); return '¥'+new Intl.NumberFormat('ja-JP').format(Math.round(v)); };
   const linesBox = document.getElementById('lines');
   const form = document.getElementById('orderForm');
@@ -125,20 +125,24 @@
     row.innerHTML =
       `<select class="nav line_category" name="line_category">${opts}</select>`+
       `<input class="nav line_product" name="line_product" type="text" placeholder="品名">`+
-      `<span class="lp-wrap"><input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代"></span>`+
+      `<input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="上代">`+
       `<input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="受注額">`+
       `<input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1">`+
       `<button type="button" class="delbtn line_del" title="削除">×</button>`;
     linesBox.appendChild(row);
     row.querySelector('.line_del').addEventListener('click',()=>{row.remove();render();});
-    row.querySelector('.line_category').addEventListener('change',()=>{toggleLp(row);render();});
     row.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
-    toggleLp(row); return row;
+    return row;
   }
-  function toggleLp(row){ row.querySelector('.lp-wrap').classList.toggle('off', row.querySelector('.line_category').value!=='供花'); }
   document.getElementById('addLineBtn').addEventListener('click',()=>{const r=makeLine('祭壇');r.querySelector('.line_product').focus();render();});
 
+  function setCustList(){
+    const list = (deptCustomers[g('f_dept').value] || []);
+    g('cust_list').innerHTML = list.map(n=>`<option value="${n}">`).join('');
+  }
+
   function setTxt(id,v){ g(id).textContent=v||''; }
+  const SEC_LABEL={'祭壇':'祭壇情報','供花':'供花情報','オプション':'オプション・付属品'};
   function render(){
     setTxt('pv_dept', g('f_dept').value);
     setTxt('pv_orderdate', form.order_date.value?('受注日：'+form.order_date.value):'');
@@ -152,15 +156,14 @@
     document.querySelectorAll('.lrow').forEach(row=>{
       const c=row.querySelector('.line_category').value, prod=row.querySelector('.line_product').value;
       const lp=row.querySelector('.line_list_price').value, up=Number(row.querySelector('.line_unit_price').value||0), q=Number(row.querySelector('.line_qty').value||0);
-      const amt=up*q; if(prod||up){byCat[c].push({prod,lp,up,q,amt}); total+=amt;}
+      const amt=up*q; if(prod||up){(byCat[c]=byCat[c]||[]).push({prod,lp,up,q,amt}); total+=amt;}
     });
     const sec=g('pv_sections'); sec.innerHTML='';
-    const labels={'祭壇':'祭壇情報','OP':'オプション・付属品','供花':'供花情報','その他':'その他'};
-    ['祭壇','OP','供花','その他'].forEach(c=>{
+    cats.forEach(c=>{
       const items=byCat[c]||[]; if(!items.length) return; let sub=0;
-      const rows=items.map(it=>{sub+=it.amt; return `<tr><td>${it.prod||''}</td>${c==='供花'?`<td class="num">${it.lp?yen(it.lp):''}</td>`:''}<td class="num">${it.up?yen(it.up):''}</td><td class="num">${it.q||''}</td><td class="num">${it.amt?yen(it.amt):''}</td></tr>`;}).join('');
-      const head=`<tr><td>品名</td>${c==='供花'?'<td>上代</td>':''}<td>受注額</td><td>本数</td><td>合計</td></tr>`;
-      sec.insertAdjacentHTML('beforeend',`<div class="rcpt-sec">【${labels[c]}】</div><table class="rcpt-tbl"><thead>${head}</thead><tbody>${rows}<tr><td class="num" colspan="${c==='供花'?4:3}"><b>${c} 小計</b></td><td class="num"><b>${yen(sub)}</b></td></tr></tbody></table>`);
+      const rows=items.map(it=>{sub+=it.amt; return `<tr><td>${it.prod||''}</td><td class="num">${it.lp?yen(it.lp):''}</td><td class="num">${it.up?yen(it.up):''}</td><td class="num">${it.q||''}</td><td class="num">${it.amt?yen(it.amt):''}</td></tr>`;}).join('');
+      const head=`<tr><td>品名</td><td>上代</td><td>受注額</td><td>本数</td><td>合計</td></tr>`;
+      sec.insertAdjacentHTML('beforeend',`<div class="rcpt-sec">【${SEC_LABEL[c]||c}】</div><table class="rcpt-tbl"><thead>${head}</thead><tbody>${rows}<tr><td class="num" colspan="4"><b>${c} 小計</b></td><td class="num"><b>${yen(sub)}</b></td></tr></tbody></table>`);
     });
     g('pv_total').textContent=yen(total);
   }
@@ -177,6 +180,8 @@
     if(i>=0 && i<navs.length-1){ navs[i+1].focus(); if(navs[i+1].select) try{navs[i+1].select();}catch(_){ } }
   });
   ['input','change'].forEach(ev=>form.addEventListener(ev,render));
+  g('f_dept').addEventListener('change', setCustList);
+  setCustList();
   makeLine('祭壇'); render();
 })();
 </script>
