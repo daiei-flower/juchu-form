@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>配達書 {{ d.header.souke or '' }}</title>
+{% macro yen(v) %}{{ ('¥' + fmt_money(v)) if v else '' }}{% endmacro %}
+{% set is_iwai = d.header.purpose == 'お祝い' %}
+{% set lab1 = '宛名' if is_iwai else '故人名' %}
+{% set lab2 = '札名' if is_iwai else '喪主名' %}
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; color:#1a1a1a; margin:0; background:#e9e9e9; font-size:13px; }
+  .toolbar { padding:10px 14px; background:#fff; border-bottom:1px solid #ccc; position:sticky; top:0; }
+  .toolbar button { padding:8px 18px; font-size:14px; cursor:pointer; }
+  #sheet { width:210mm; min-height:297mm; margin:14px auto; background:#fff; padding:16mm 17mm; box-shadow:0 1px 6px rgba(0,0,0,.18); }
+  .ohead { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .office { font-size:18px; font-weight:700; letter-spacing:1px; background:#111; color:#fff; padding:6px 18px; }
+  .ttl { font-size:23px; font-weight:700; letter-spacing:3px; }
+  .odate { font-size:12px; color:#444; white-space:nowrap; }
+  table { border-collapse:collapse; margin-bottom:12px; border:1.5px solid #333; }
+  th, td { border:1px solid #d2d2d2; padding:7px 12px; vertical-align:middle; }
+  th { background:#f7f7f7; font-weight:600; color:#333; }
+  .info { width:100%; }
+  .info .lbl { background:#f7f7f7; font-weight:700; white-space:nowrap; width:112px; color:#333; }
+  /* 配達日時は目立たせる（テレアポで書き換えるため大きめ） */
+  .info .hot td { font-size:15px; font-weight:700; }
+  .det th { text-align:center; font-size:11px; letter-spacing:.5px; border-bottom:1.5px solid #333; }
+  .det td.pname { min-width:120px; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .det .num { min-width:92px; }
+  .ctr { text-align:center; white-space:nowrap; }
+  .sec { font-weight:700; font-size:13px; margin:14px 0 4px; color:#222; }
+  .subtotal td { background:#fafafa; border-top:1.5px solid #333; }
+  .totals { width:90mm; margin-left:auto; }
+  .totals .lbl { background:#f7f7f7; font-weight:700; white-space:nowrap; }
+  .totals .grand td { background:#ededed; font-weight:800; font-size:16px; border-top:2px solid #111; }
+  .receipt td { background:#f4f4f4; border-left:4px solid #111; font-weight:600; }
+  .note-box { border:1.5px solid #333; padding:9px 12px; margin-bottom:12px; min-height:46px; white-space:pre-wrap; }
+  .foot { margin-top:20px; padding-top:8px; border-top:1px solid #ccc; font-size:11px; color:#555; display:flex; justify-content:space-between; }
+  @media print { .toolbar { display:none; } body { background:#fff; } #sheet { width:210mm; min-height:auto; margin:0; box-shadow:none; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">印刷する（A4縦）</button>　<a href="/">← 入力に戻る</a>　<span style="font-size:12px;color:#666;">余白は『既定』のままでOK</span></div>
+
+<div id="sheet">
+  <div class="ohead">
+    <div class="office">{{ d.header.department }}</div>
+    <div class="ttl">配 達 書</div>
+    <div class="odate">受注日：{{ d.header.order_date or '　　年　月　日' }}{% if d.header.purpose %}　／　{{ d.header.purpose }}{% endif %}</div>
+  </div>
+
+  <table class="info">
+    <tr class="hot"><td class="lbl">配達日時</td><td colspan="3">{{ (d.header.delivery_at or '').replace('T',' ') or '　　月　　日　　：　　' }}</td></tr>
+    <tr><td class="lbl">得意先様名</td><td>{{ d.header.customer or '' }}{% if d.header.customer %} 様{% endif %}</td>
+        <td class="lbl">{{ lab1 }}</td><td>{{ d.header.souke or '' }}</td></tr>
+    <tr><td class="lbl">{{ lab2 }}</td><td>{{ d.header.name2 or '' }}</td>
+        <td class="lbl">性別</td><td>{{ d.header.gender or '' }}</td></tr>
+    <tr><td class="lbl">届け先住所</td><td colspan="3">{{ d.header.deliver_address or '' }}</td></tr>
+    <tr><td class="lbl">届け先電話</td><td colspan="3">{{ d.header.deliver_phone or '' }}</td></tr>
+  </table>
+
+  {% for cat in categories %}
+  {% if d.groups[cat] %}
+  <div class="sec">【{{ cat }}】</div>
+  <table class="det">
+    <thead><tr><th>品名</th><th>上代(販売額)</th><th>受注額(単価)</th><th>本数</th><th>税</th><th>合計</th></tr></thead>
+    <tbody>
+      {% for l in d.groups[cat] %}
+      <tr>
+        <td class="pname">{{ l.product or '' }}</td>
+        <td class="num">{{ yen(l.list_price) }}</td>
+        <td class="num">{{ yen(l.unit_price) }}</td>
+        <td class="num">{{ fmt_money(l.qty) if l.qty else '' }}</td>
+        <td class="ctr">{{ l.tax_kind or '税別' }}</td>
+        <td class="num">{{ yen(l.amount) }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="subtotal"><td class="num" colspan="5"><strong>{{ cat }} 小計</strong></td><td class="num"><strong>¥{{ fmt_money(d.totals[cat]) }}</strong></td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+  {% endfor %}
+
+  <table class="totals">
+    <tr><td class="lbl">税抜小計</td><td class="num">¥{{ fmt_money(d.tax.net) }}</td></tr>
+    <tr><td class="lbl">消費税(10%)</td><td class="num">¥{{ fmt_money(d.tax.tax) }}</td></tr>
+    <tr class="grand"><td class="lbl">税込合計額</td><td class="num">¥{{ fmt_money(d.tax.incl) }}</td></tr>
+  </table>
+
+  {% if d.header.cash_receipt or d.header.receipt_needed %}
+  <table class="info">
+    <tr class="receipt"><td class="lbl">領収（現金）</td><td>{{ d.header.cash_receipt or '—' }}</td>
+        <td class="lbl">領収書</td><td>{{ d.header.receipt_needed or '—' }}{% if d.header.receipt_needed == '要' and d.header.receipt_name %}　宛名：{{ d.header.receipt_name }}{% endif %}</td></tr>
+  </table>
+  {% endif %}
+
+  <div class="sec">【備考】</div>
+  <div class="note-box">{{ d.header.note or '' }}</div>
+
+  <div class="foot">
+    <span>{{ company_name or '' }}</span>
+    <span>配達書 / {{ d.header.souke or '' }}</span>
+  </div>
+</div>
+
+<script>
+  if (new URLSearchParams(location.search).get('auto') === '1'{% if autoprint %} || true{% endif %}) {
+    window.addEventListener('load', () => setTimeout(() => window.print(), 400));
+  }
+</script>
+</body>
+</html>

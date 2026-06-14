@@ -24,12 +24,18 @@ from fastapi.templating import Jinja2Templates
 BASE = Path(__file__).resolve().parent
 API = "https://api.notion.com/v1"
 CATEGORIES = ["祭壇", "供花", "オプション", "生花", "花束", "アレンジ", "仏花", "その他"]
+# 配達書（アレンジ・鉢物・花束など日時の決まった配達物）のカテゴリ
+DELIVERY_CATEGORIES = ["忌明け花", "枕花", "アレンジメント", "花束", "観葉植物", "鉢物", "その他"]
 
 # Notionプロパティ名（本体アプリと一致）
 H = {"souke": "御葬家名", "order_date": "受注日", "service_date": "施行予定日時",
      "teardown_date": "撤収予定日時", "customer": "得意先", "venue": "式場・住所",
      "gender": "性別", "money_transfer": "売上金移動",
-     "tax_kind": "税区分", "note": "備考"}
+     "tax_kind": "税区分", "note": "備考",
+     # 配達書用（本体アプリ notion_client.py と一致）
+     "doc_type": "帳票種別", "purpose": "用途", "delivery_at": "配達日時",
+     "name2": "喪主名・札名", "deliver_address": "届け先住所", "deliver_phone": "届け先電話",
+     "cash_receipt": "領収現金", "receipt_needed": "領収書要否", "receipt_name": "領収書名"}
 L = {"product": "品名", "rel": "受注書", "category": "カテゴリ",
      "list_price": "上代金額", "unit_price": "受注額", "qty": "本数",
      "tax": "税区分", "amount": "合計"}
@@ -113,19 +119,36 @@ def create_order(department, header, lines):
         raise RuntimeError(f"部門が未設定です: {department}")
     if not TOKEN:
         raise RuntimeError("NOTION_TOKEN が未設定です")
+    doc_type = header.get("doc_type") or "施行受注書"
+    is_deliv = doc_type == "配達書"
     with httpx.Client(timeout=60) as client:
         hp = {
+            H["doc_type"]: _select(doc_type),
             H["souke"]: _title(header.get("souke")),
             H["order_date"]: _date(header.get("order_date")),
-            H["service_date"]: _date(header.get("service_date")),
-            H["teardown_date"]: _date(header.get("teardown_date")),
             H["customer"]: _select(header.get("customer")),
-            H["venue"]: _text(header.get("venue")),
             H["gender"]: _select(header.get("gender")),
-            H["money_transfer"]: _text(header.get("money_transfer")),
             H["tax_kind"]: _select(header.get("tax_kind")),
             H["note"]: _text(header.get("note")),
         }
+        if is_deliv:
+            hp.update({
+                H["purpose"]: _select(header.get("purpose")),
+                H["delivery_at"]: _date(header.get("delivery_at")),
+                H["name2"]: _text(header.get("name2")),
+                H["deliver_address"]: _text(header.get("deliver_address")),
+                H["deliver_phone"]: _text(header.get("deliver_phone")),
+                H["cash_receipt"]: _select(header.get("cash_receipt")),
+                H["receipt_needed"]: _select(header.get("receipt_needed")),
+                H["receipt_name"]: _text(header.get("receipt_name")),
+            })
+        else:
+            hp.update({
+                H["service_date"]: _date(header.get("service_date")),
+                H["teardown_date"]: _date(header.get("teardown_date")),
+                H["venue"]: _text(header.get("venue")),
+                H["money_transfer"]: _text(header.get("money_transfer")),
+            })
         r = client.post(f"{API}/pages", headers=_headers(),
                         json={"parent": {"database_id": src["order_header"]}, "properties": hp})
         if r.status_code != 200:
@@ -169,11 +192,11 @@ def _pget(props, name):
     return None
 
 
-def _normcat(c):
+def _normcat(c, allowed=CATEGORIES):
     c = (c or "").strip()
     if c in ("OP", "ＯＰ"):
         return "オプション"
-    return c if c in CATEGORIES else "その他"
+    return c if c in allowed else "その他"
 
 
 def _dept_of(header_db_id):
@@ -226,6 +249,7 @@ def form(request: Request, department: str = "", msg: str = "", err: str = "",
     return templates.TemplateResponse("form.html", {
         "request": request, "departments": depts, "department": department,
         "dept_customers": dept_customers, "categories": CATEGORIES,
+        "delivery_categories": DELIVERY_CATEGORIES,
         "today": datetime.now().strftime("%Y-%m-%d"), "msg": msg, "err": err,
     })
 
@@ -238,7 +262,10 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
     department = f.get("department") or ""
     header = {k: (f.get(k) or None) for k in
               ("souke", "order_date", "service_date", "teardown_date", "customer",
-               "venue", "gender", "money_transfer", "note")}
+               "venue", "gender", "money_transfer", "note",
+               "doc_type", "purpose", "delivery_at", "name2",
+               "deliver_address", "deliver_phone",
+               "cash_receipt", "receipt_needed", "receipt_name")}
     cats, prods = f.getlist("line_category"), f.getlist("line_product")
     lps, ups, qtys = f.getlist("line_list_price"), f.getlist("line_unit_price"), f.getlist("line_qty")
     taxes = f.getlist("line_tax")
@@ -255,13 +282,18 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
     action = f.get("action") or "save"
     try:
         create_order(department, header, lines)
+        is_deliv = (header.get("doc_type") == "配達書")
         if action == "print":
             # 直前の入力内容からそのまま印刷（Notion再取得のラグを避ける）
             d = _build_d(department, header, lines)
-            return templates.TemplateResponse("print.html", {
-                "request": request, "d": d, "categories": CATEGORIES,
+            tpl = "print_delivery.html" if is_deliv else "print.html"
+            cats = DELIVERY_CATEGORIES if is_deliv else CATEGORIES
+            return templates.TemplateResponse(tpl, {
+                "request": request, "d": d, "categories": cats,
                 "fmt_money": _fmt_money, "autoprint": True, "company_name": COMPANY})
-        m = quote(f"{header.get('souke') or ''}家 の受注書を登録しました")
+        name = header.get("souke") or ""
+        m = quote(f"{name} の配達書を登録しました" if is_deliv
+                  else f"{name}家 の受注書を登録しました")
         return RedirectResponse(f"/?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/?department={quote(department)}&err={quote(str(e))}",
@@ -273,16 +305,18 @@ def _fmt_money(v):
 
 
 def _build_d(department, header, lines):
+    is_deliv = (header.get("doc_type") == "配達書")
+    cat_set = DELIVERY_CATEGORIES if is_deliv else CATEGORIES
     norm = []
     for l in lines:
         up = _num(l.get("unit_price"))
         qy = _num(l.get("qty")) or 1
-        norm.append({"category": _normcat(l.get("category")), "product": l.get("product"),
+        norm.append({"category": _normcat(l.get("category"), cat_set), "product": l.get("product"),
                      "list_price": l.get("list_price"), "unit_price": up, "qty": qy,
                      "amount": up * qy, "tax_kind": l.get("tax_kind") or "税別"})
-    groups = {c: [l for l in norm if l["category"] == c] for c in CATEGORIES}
-    totals = {c: sum(l["amount"] for l in groups[c]) for c in CATEGORIES}
-    other = sum(totals[c] for c in CATEGORIES if c not in ("祭壇", "供花"))
+    groups = {c: [l for l in norm if l["category"] == c] for c in cat_set}
+    totals = {c: sum(l["amount"] for l in groups[c]) for c in cat_set}
+    other = sum(totals[c] for c in cat_set if c not in ("祭壇", "供花"))
     grand = sum(totals.values())
     return {"header": {**header, "department": department}, "groups": groups,
             "totals": totals, "other_total": other, "grand_total": grand,
@@ -336,8 +370,18 @@ def print_order(request: Request, page_id: str, _u: str = Depends(auth)):
               "customer": _pget(hp, H["customer"]), "venue": _pget(hp, H["venue"]),
               "souke": _pget(hp, H["souke"]), "gender": _pget(hp, H["gender"]),
               "money_transfer": _pget(hp, H["money_transfer"]), "note": _pget(hp, H["note"]),
-              "tax_kind": _pget(hp, H["tax_kind"])}
+              "tax_kind": _pget(hp, H["tax_kind"]),
+              "doc_type": _pget(hp, H["doc_type"]), "purpose": _pget(hp, H["purpose"]),
+              "delivery_at": _pget(hp, H["delivery_at"]), "name2": _pget(hp, H["name2"]),
+              "deliver_address": _pget(hp, H["deliver_address"]),
+              "deliver_phone": _pget(hp, H["deliver_phone"]),
+              "cash_receipt": _pget(hp, H["cash_receipt"]),
+              "receipt_needed": _pget(hp, H["receipt_needed"]),
+              "receipt_name": _pget(hp, H["receipt_name"])}
+    is_deliv = (header.get("doc_type") == "配達書")
     d = _build_d(dept, header, lines)
-    return templates.TemplateResponse("print.html", {
-        "request": request, "d": d, "categories": CATEGORIES, "fmt_money": _fmt_money,
+    tpl = "print_delivery.html" if is_deliv else "print.html"
+    cats = DELIVERY_CATEGORIES if is_deliv else CATEGORIES
+    return templates.TemplateResponse(tpl, {
+        "request": request, "d": d, "categories": cats, "fmt_money": _fmt_money,
         "company_name": COMPANY})
