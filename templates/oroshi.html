@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卸部 月次入力</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; --dang:#e5484d; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:840px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .btn.del { background:transparent; color:var(--dang); border:none; font-size:18px; padding:0 8px; cursor:pointer; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .panel h2 { font-size:15px; margin:0 0 4px; }
+  .panel .hint { font-size:12px; color:var(--mut); margin:0 0 10px; }
+  .row { display:grid; gap:8px; align-items:center; margin-bottom:8px; }
+  .row.sale { grid-template-columns: 1.2fr 90px 130px 1fr 34px; }
+  .row.pur  { grid-template-columns: 1.2fr 130px 1fr 34px; }
+  .row.loss { grid-template-columns: 130px 1fr 34px; }
+  .rhead { font-size:11px; color:var(--mut); font-weight:700; }
+  input { width:100%; padding:9px 10px; border:1px solid var(--bd); border-radius:8px; font-size:14px; }
+  input.amt { text-align:right; }
+  .monthbar { display:flex; align-items:center; gap:10px; margin:0 0 14px; flex-wrap:wrap; }
+  .monthbar input { width:auto; }
+  .totals { display:flex; gap:18px; flex-wrap:wrap; background:#fafbfc; border:1px solid var(--bd); border-radius:10px; padding:12px 16px; margin-bottom:16px; }
+  .totals .t { font-size:13px; color:var(--mut); }
+  .totals .t b { display:block; font-size:20px; color:#1a1a1a; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+  .actions { display:flex; gap:10px; align-items:center; position:sticky; bottom:0; background:#f4f5f7; padding:12px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>卸部 月次入力</h1>
+    <div class="sub">得意先ごとの月次売上・仕入・ロスをまとめて入力。{{ department }}</div>
+  </div>
+  <a class="btn ghost small" href="/?department={{ department|urlencode }}">受注書・配達書フォームへ</a>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="msg ng">{{ err }}</div>{% endif %}
+
+  <div class="monthbar">
+    <label>対象月：</label>
+    <input type="month" id="monthPick" value="{{ month }}">
+    <span class="sub">月を変えると、その月の保存済みデータを読み込みます。</span>
+  </div>
+
+  <div class="totals">
+    <div class="t">販売件数計 <b><span id="tCnt">0</span> 件</b></div>
+    <div class="t">売上計 <b>¥<span id="tSales">0</span></b></div>
+    <div class="t">仕入計 <b>¥<span id="tPur">0</span></b></div>
+    <div class="t">平均掛け率 <b><span id="tKake">—</span></b></div>
+    <div class="t">月間ロス <b>¥<span id="tLoss">0</span></b></div>
+  </div>
+
+  <form method="post" action="/oroshi/save" id="oForm">
+    <input type="hidden" name="month" value="{{ month }}">
+
+    <div class="panel">
+      <h2>卸売上（得意先別）</h2>
+      <p class="hint">その月の得意先ごとに、販売件数と売上額を入力。取引の少ない先は「その他」でまとめてもOK。得意先が空、または件数・金額とも空の行は無視されます。</p>
+      <div class="row sale rhead"><div>得意先</div><div>販売件数</div><div>売上額</div><div>備考</div><div></div></div>
+      <div id="sales"></div>
+      <button type="button" class="btn ghost small" onclick="addSale()">＋ 得意先を追加</button>
+    </div>
+
+    <div class="panel">
+      <h2>仕入</h2>
+      <p class="hint">仕入先ごとの月合計（合算でも可）。掛け率の分母になります。</p>
+      <div class="row pur rhead"><div>仕入先</div><div>金額</div><div>備考</div><div></div></div>
+      <div id="purchases"></div>
+      <button type="button" class="btn ghost small" onclick="addPur()">＋ 仕入を追加</button>
+    </div>
+
+    <div class="panel">
+      <h2>月間ロス</h2>
+      <p class="hint">廃棄ロスなど。金額が空の行は無視されます。</p>
+      <div class="row loss rhead"><div>金額</div><div>備考</div><div></div></div>
+      <div id="losses"></div>
+      <button type="button" class="btn ghost small" onclick="addLoss()">＋ ロスを追加</button>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn" id="saveBtn">この月を保存</button>
+      <span class="sub">同じ月を保存し直すと上書きされます（二重計上しません）。</span>
+    </div>
+  </form>
+
+  <datalist id="custList">
+    {% for c in customers %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+</div>
+
+<script>
+  const initSales = {{ sales | tojson }};
+  const initPur = {{ purchases | tojson }};
+  const initLoss = {{ losses | tojson }};
+
+  document.getElementById("monthPick").addEventListener("change", function(){
+    if (this.value) location.href = "/oroshi?month=" + encodeURIComponent(this.value);
+  });
+
+  function esc(s){ return (s==null?"":String(s)).replace(/"/g,"&quot;"); }
+  function val(x){ return (x==null||x==="")?"":x; }
+
+  function saleRow(d){
+    d = d || {};
+    const el = document.createElement("div");
+    el.className = "row sale";
+    el.innerHTML =
+      '<input name="sale_customer" list="custList" placeholder="得意先" value="'+esc(d.customer)+'">' +
+      '<input name="sale_qty" class="amt cnt" type="number" inputmode="numeric" placeholder="0" value="'+esc(val(d.qty))+'">' +
+      '<input name="sale_amount" class="amt money" type="number" inputmode="numeric" placeholder="0" value="'+esc(val(d.amount))+'">' +
+      '<input name="sale_note" placeholder="備考" value="'+esc(d.note)+'">' +
+      '<input type="hidden" name="sale_page_id" value="'+esc(d.page_id)+'">' +
+      '<button type="button" class="btn del" title="削除" onclick="rm(this)">×</button>';
+    return el;
+  }
+  function purRow(d){
+    d = d || {};
+    const el = document.createElement("div");
+    el.className = "row pur";
+    el.innerHTML =
+      '<input name="purchase_supplier" placeholder="仕入先" value="'+esc(d.supplier)+'">' +
+      '<input name="purchase_amount" class="amt money" type="number" inputmode="numeric" placeholder="0" value="'+esc(val(d.amount))+'">' +
+      '<input name="purchase_note" placeholder="備考" value="'+esc(d.note)+'">' +
+      '<input type="hidden" name="purchase_page_id" value="'+esc(d.page_id)+'">' +
+      '<button type="button" class="btn del" title="削除" onclick="rm(this)">×</button>';
+    return el;
+  }
+  function lossRow(d){
+    d = d || {};
+    const el = document.createElement("div");
+    el.className = "row loss";
+    el.innerHTML =
+      '<input name="loss_amount" class="amt money" type="number" inputmode="numeric" placeholder="0" value="'+esc(val(d.amount))+'">' +
+      '<input name="loss_note" placeholder="備考" value="'+esc(d.note)+'">' +
+      '<input type="hidden" name="loss_page_id" value="'+esc(d.page_id)+'">' +
+      '<button type="button" class="btn del" title="削除" onclick="rm(this)">×</button>';
+    return el;
+  }
+
+  function addSale(d){ document.getElementById("sales").appendChild(saleRow(d)); recalc(); }
+  function addPur(d){ document.getElementById("purchases").appendChild(purRow(d)); recalc(); }
+  function addLoss(d){ document.getElementById("losses").appendChild(lossRow(d)); recalc(); }
+  function rm(btn){ btn.closest(".row").remove(); recalc(); }
+
+  function recalc(){
+    const sum = sel => Array.from(document.querySelectorAll(sel))
+      .reduce((a,el)=>a+(parseFloat(el.value)||0),0);
+    const s = sum('input[name="sale_amount"]');
+    const cnt = sum('input[name="sale_qty"]');
+    const p = sum('input[name="purchase_amount"]');
+    const l = sum('input[name="loss_amount"]');
+    const f = n => n.toLocaleString("ja-JP");
+    document.getElementById("tCnt").textContent = f(cnt);
+    document.getElementById("tSales").textContent = f(s);
+    document.getElementById("tPur").textContent = f(p);
+    document.getElementById("tLoss").textContent = f(l);
+    document.getElementById("tKake").textContent = s>0 ? (p/s*100).toFixed(1)+"%" : "—";
+  }
+
+  document.addEventListener("input", e => {
+    if (e.target.classList.contains("amt")) recalc();
+  });
+
+  // 初期表示：保存済みがあれば復元、無ければ空行を3つ（卸売上）/1つずつ。
+  (initSales.length ? initSales : [null,null,null]).forEach(addSale);
+  (initPur.length ? initPur : [null]).forEach(addPur);
+  (initLoss.length ? initLoss : [null]).forEach(addLoss);
+  recalc();
+
+  document.getElementById("oForm").addEventListener("submit", function(){
+    const b = document.getElementById("saveBtn");
+    b.disabled = true; b.textContent = "保存中…";
+  });
+</script>
+</body>
+</html>

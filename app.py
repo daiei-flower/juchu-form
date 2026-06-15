@@ -39,6 +39,12 @@ H = {"souke": "御葬家名", "order_date": "受注日", "service_date": "施行
 L = {"product": "品名", "rel": "受注書", "category": "カテゴリ",
      "list_price": "上代金額", "unit_price": "受注額", "qty": "本数",
      "tax": "税区分", "amount": "合計"}
+# 卸部の月次入力（本体 notion_client.py の R_/P_/LS_ と一致）
+OROSHI_DEPT = "福井卸部"
+R = {"customer": "得意先", "date": "日付", "amount": "売上額",
+     "qty": "数量", "note": "備考"}   # 卸売上(顧客別)・数量=月間販売件数
+P = {"item": "品名", "date": "日付", "supplier": "仕入先", "amount": "金額", "note": "備考"}  # 仕入
+LS = {"item": "項目", "date": "年月", "amount": "金額", "note": "備考"}        # 月間ロス
 
 SOURCES = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))["departments"]
 TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -266,6 +272,104 @@ def delete_order(department, page_id):
         r = client.patch(f"{API}/pages/{page_id}", headers=_headers(), json={"archived": True})
         if r.status_code != 200:
             raise RuntimeError(f"取消に失敗 {r.status_code}: {r.text[:300]}")
+
+
+def _oroshi_dbs():
+    src = SOURCES.get(OROSHI_DEPT, {})
+    return src.get("retail_sales"), src.get("purchase"), src.get("loss")
+
+
+def _query_month(client, db_id, date_prop, month):
+    """指定DBから「日付/年月が month(YYYY-MM)で始まる」行を取得。(page_id, props)のリスト。"""
+    if not db_id:
+        return []
+    out = []
+    r = client.post(f"{API}/databases/{db_id}/query", headers=_headers(),
+                    json={"page_size": 100})
+    if r.status_code != 200:
+        return out
+    for it in r.json().get("results", []):
+        pr = it.get("properties", {})
+        d = _pget(pr, date_prop) or ""
+        if d[:7] == month:
+            out.append((it["id"], pr))
+    return out
+
+
+def read_oroshi(month):
+    """卸部のその月の 卸売上・仕入・月間ロス を読む（プレフィル用）。"""
+    sales, purchases, losses = [], [], []
+    if not TOKEN:
+        return {"sales": sales, "purchases": purchases, "losses": losses}
+    rdb, pdb, ldb = _oroshi_dbs()
+    with httpx.Client(timeout=30) as client:
+        for pid, pr in _query_month(client, rdb, R["date"], month):
+            sales.append({"page_id": pid, "customer": _pget(pr, R["customer"]),
+                          "qty": _pget(pr, R["qty"]),
+                          "amount": _pget(pr, R["amount"]), "note": _pget(pr, R["note"])})
+        for pid, pr in _query_month(client, pdb, P["date"], month):
+            purchases.append({"page_id": pid, "supplier": _pget(pr, P["supplier"]),
+                              "amount": _pget(pr, P["amount"]), "note": _pget(pr, P["note"])})
+        for pid, pr in _query_month(client, ldb, LS["date"], month):
+            losses.append({"page_id": pid, "amount": _pget(pr, LS["amount"]),
+                           "note": _pget(pr, LS["note"])})
+    return {"sales": sales, "purchases": purchases, "losses": losses}
+
+
+def _reconcile_rows(client, db_id, date_prop, month, rows, props_fn, keep_fn):
+    """その月の行を upsert（page_idありPATCH/なし新規）し、今回送信されなかった既存行をアーカイブ。"""
+    if not db_id:
+        return
+    existing = {pid for pid, _ in _query_month(client, db_id, date_prop, month)}
+    submitted = set()
+    for row in rows:
+        if not keep_fn(row):
+            continue
+        pid = (row.get("page_id") or "").strip()
+        props = props_fn(row)
+        if pid:
+            rr = client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"properties": props})
+            submitted.add(pid)
+        else:
+            rr = client.post(f"{API}/pages", headers=_headers(),
+                             json={"parent": {"database_id": db_id}, "properties": props})
+        if rr.status_code != 200:
+            raise RuntimeError(f"卸部データの保存に失敗 {rr.status_code}: {rr.text[:300]}")
+    for pid in existing - submitted:
+        client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+
+
+def save_oroshi(month, sales, purchases, losses):
+    """卸部のその月の 卸売上・仕入・月間ロス をまとめて保存（月単位で upsert＋差分削除）。"""
+    if not TOKEN:
+        raise RuntimeError("NOTION_TOKEN が未設定です")
+    rdb, pdb, ldb = _oroshi_dbs()
+    day = f"{month}-01"
+    with httpx.Client(timeout=60) as client:
+        _reconcile_rows(
+            client, rdb, R["date"], month, sales,
+            lambda row: {R["customer"]: _title(row.get("customer")),
+                         R["date"]: _date(day),
+                         R["amount"]: _number(row.get("amount")),
+                         R["qty"]: _number(row.get("qty")),
+                         R["note"]: _text(row.get("note"))},
+            keep_fn=lambda row: (row.get("customer") or "").strip()
+                                and (_num(row.get("amount")) or _num(row.get("qty"))))
+        _reconcile_rows(
+            client, pdb, P["date"], month, purchases,
+            lambda row: {P["item"]: _title(row.get("supplier") or "仕入"),
+                         P["supplier"]: _text(row.get("supplier")),
+                         P["date"]: _date(day),
+                         P["amount"]: _number(row.get("amount")),
+                         P["note"]: _text(row.get("note"))},
+            keep_fn=lambda row: _num(row.get("amount")))
+        _reconcile_rows(
+            client, ldb, LS["date"], month, losses,
+            lambda row: {LS["item"]: _title("月間ロス"),
+                         LS["date"]: _date(day),
+                         LS["amount"]: _number(row.get("amount")),
+                         LS["note"]: _text(row.get("note"))},
+            keep_fn=lambda row: _num(row.get("amount")))
 
 
 def recent_orders(department, limit=60):
@@ -570,6 +674,54 @@ async def order_delete(request: Request, page_id: str,
             status_code=303)
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/list?department={quote(department)}&err={quote('取消に失敗：'+str(e))}",
+                                status_code=303)
+
+
+@app.get("/oroshi", response_class=HTMLResponse)
+def oroshi_form(request: Request, month: str = "", msg: str = "", err: str = "",
+                _u: str = Depends(auth)):
+    """卸部の月次入力（卸売上・仕入・月間ロス）。"""
+    from datetime import datetime
+    if not (len(month) == 7 and month[4] == "-"):
+        month = datetime.now().strftime("%Y-%m")
+    data = read_oroshi(month)
+    return templates.TemplateResponse("oroshi.html", {
+        "request": request, "department": OROSHI_DEPT, "month": month,
+        "customers": SOURCES.get(OROSHI_DEPT, {}).get("oroshi_customers")
+                     or SOURCES.get(OROSHI_DEPT, {}).get("customers", []),
+        "sales": data["sales"], "purchases": data["purchases"], "losses": data["losses"],
+        "msg": msg, "err": err,
+    })
+
+
+def _parse_oroshi(f):
+    def rows(prefix, fields):
+        cols = {k: f.getlist(f"{prefix}_{k}") for k in fields}
+        n = max((len(v) for v in cols.values()), default=0)
+        out = []
+        for i in range(n):
+            out.append({k: (cols[k][i] if i < len(cols[k]) else "") for k in fields})
+        return out
+    sales = rows("sale", ("customer", "qty", "amount", "note", "page_id"))
+    purchases = rows("purchase", ("supplier", "amount", "note", "page_id"))
+    losses = rows("loss", ("amount", "note", "page_id"))
+    return sales, purchases, losses
+
+
+@app.post("/oroshi/save")
+async def oroshi_save(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    month = f.get("month") or ""
+    sales, purchases, losses = _parse_oroshi(f)
+    try:
+        save_oroshi(month, sales, purchases, losses)
+        return RedirectResponse(
+            f"/oroshi?month={quote(month)}&msg={quote(month + ' の卸部データを保存しました')}",
+            status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/oroshi?month={quote(month)}&err={quote('保存に失敗：'+str(e))}",
                                 status_code=303)
 
 
