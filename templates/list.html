@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>受注書・配達書 一覧（修正・取消）</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .btn.danger { background:#fff; color:#e5484d; border:1px solid #e5484d; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0; }
+  .tab { border:1px solid var(--bd); border-radius:8px; padding:7px 12px; font-size:13px; text-decoration:none; color:#333; background:#fff; }
+  .tab.on { border-color:var(--pri); background:var(--pribg); color:var(--pri); font-weight:700; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:4px 0; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:10px 12px; border-bottom:1px solid #eee; text-align:left; font-size:14px; vertical-align:middle; }
+  th { font-size:12px; color:var(--mut); background:#fafafa; }
+  td.ops { white-space:nowrap; text-align:right; }
+  td.ops form { display:inline; margin:0; }
+  .tag { display:inline-block; padding:1px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+  .tag-shikou { background:#eef0f3; color:#555; }
+  .tag-haitatsu { background:#e8f7ee; color:#1c8a44; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+  .empty { color:var(--mut); padding:24px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>受注書・配達書 一覧</h1>
+    <div class="sub">直したい行の「編集」、間違って作った行は「取消」。新しい順（直近{{ orders|length }}件）。</div>
+  </div>
+  <a class="btn" href="/?department={{ department|urlencode }}">＋ 新規作成</a>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="msg ng">{{ err }}</div>{% endif %}
+
+  <div class="tabs">
+    {% for d in departments %}
+    <a class="tab {{ 'on' if d==department else '' }}" href="/list?department={{ d|urlencode }}">{{ d }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="panel">
+    {% if orders %}
+    <table>
+      <thead><tr><th>種別</th><th>日付</th><th>名義</th><th>得意先</th><th></th></tr></thead>
+      <tbody>
+        {% for o in orders %}
+        {% set is_h = o.doc_type == '配達書' %}
+        <tr>
+          <td><span class="tag {{ 'tag-haitatsu' if is_h else 'tag-shikou' }}">{{ '配達書' if is_h else '施行' }}</span></td>
+          <td>{{ (o.delivery_at or o.service_date or o.order_date or '')[:16]|replace('T',' ') }}</td>
+          <td>{{ o.souke or '（名義なし）' }}{% if o.souke and not is_h %} 家{% endif %}{% if is_h and o.purpose %}<span class="sub" style="font-size:11px; color:var(--mut);">／{{ o.purpose }}</span>{% endif %}</td>
+          <td>{{ o.customer or '' }}</td>
+          <td class="ops">
+            <a class="btn ghost small" href="/edit/{{ o.id }}">編集</a>
+            <a class="btn ghost small" href="/print/{{ o.id }}" target="_blank">印刷</a>
+            <form method="post" action="/delete/{{ o.id }}" onsubmit="return confirm('「{{ (o.souke or o.customer or 'この受注書') }}」を取り消します。よろしいですか？（元に戻すにはNotionのゴミ箱から復元）');">
+              <input type="hidden" name="department" value="{{ department }}">
+              <button type="submit" class="btn danger small">取消</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">この部門の受注書・配達書はまだありません。<br><a class="btn ghost small" href="/?department={{ department|urlencode }}" style="margin-top:10px;">＋ 新規作成</a></div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

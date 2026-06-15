@@ -3,16 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>受注書・配達書 入力</title>
+<title>{{ '受注書・配達書 を修正' if edit_mode else '受注書・配達書 入力' }}</title>
+{% set dt0 = h.doc_type or '施行受注書' %}
 <style>
   :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
   * { box-sizing:border-box; }
   body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
-  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; position:sticky; top:0; z-index:10; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
   header h1 { font-size:16px; margin:0; }
   header .sub { font-size:12px; color:var(--mut); }
+  header .nav { display:flex; gap:8px; }
   .wrap { max-width:1100px; margin:0 auto; padding:16px; display:flex; gap:18px; align-items:flex-start; }
-  .preview { flex:0 0 40%; position:sticky; top:70px; }
+  .preview { flex:0 0 40%; position:sticky; top:78px; }
   .formcol { flex:1 1 60%; }
   .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
   .panel h2 { font-size:14px; margin:0 0 10px; }
@@ -20,9 +22,9 @@
   .ofield label { display:block; font-size:12px; color:var(--mut); margin-bottom:3px; }
   input, select, textarea { width:100%; padding:8px 9px; border:1px solid var(--bd); border-radius:7px; font-size:14px; background:#fff; }
   input:focus, select:focus, textarea:focus { outline:2px solid var(--pribg); border-color:var(--pri); }
-  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
   .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
-  .btn.small { padding:5px 10px; font-size:13px; }
+  .btn.small { padding:6px 11px; font-size:13px; }
   .doctype { display:flex; gap:8px; }
   .doctype label { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--bd); border-radius:8px; padding:9px; font-size:14px; cursor:pointer; background:#fff; margin:0; }
   .doctype input { width:auto; }
@@ -30,6 +32,7 @@
   .msg { padding:10px 14px; border-radius:8px; margin:14px auto 0; max-width:1100px; }
   .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
   .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+  .editbar { background:#fff7e6; border:1px solid #f0c36d; color:#7a5b16; padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; }
   .rcpt { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; font-size:12px; }
   .rcpt-top { display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px; }
   .rcpt-title { text-align:center; font-size:16px; margin:2px 0 10px; letter-spacing:2px; }
@@ -55,7 +58,6 @@
   .fld input, .fld select { width:108px; }
   .fld.amt b { font-size:14px; }
   .movechk { display:flex; align-items:center; gap:6px; font-size:12px; }
-  /* 帳票種別による表示切替（施行受注書／配達書） */
   #orderForm[data-doc="配達書"] .shikou-only { display:none !important; }
   #orderForm[data-doc="施行受注書"] .delivery-only { display:none !important; }
   @media (max-width:820px){ .wrap{flex-direction:column;} .preview{position:static; flex:1 1 auto; width:100%; order:2;} .formcol{order:1; width:100%;} }
@@ -63,18 +65,25 @@
 </head>
 <body>
 <header>
-  <h1>受注書・配達書 入力フォーム</h1>
-  <div class="sub">入力すると Notion に保存されます（経営者が集計します）。Enterキーで次の項目へ。</div>
+  <div>
+    <h1>{{ '受注書・配達書 を修正' if edit_mode else '受注書・配達書 入力フォーム' }}</h1>
+    <div class="sub">{{ '内容を直してNotionに反映します。' if edit_mode else '入力すると Notion に保存されます。' }}Enterキーで次の項目へ。</div>
+  </div>
+  <div class="nav">
+    <a class="btn ghost small" href="/">＋ 新規作成</a>
+    <a class="btn ghost small" href="/list?department={{ department|urlencode }}">一覧（修正・取消）</a>
+  </div>
 </header>
 
 {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
 {% if err %}<div class="msg ng">登録に失敗：{{ err }}</div>{% endif %}
 
-<form method="post" action="/create" id="orderForm" data-doc="施行受注書">
-<input type="hidden" name="doc_type" id="f_doctype" value="施行受注書">
+<form method="post" action="{{ form_action or '/create' }}" id="orderForm" data-doc="{{ dt0 }}">
+<input type="hidden" name="doc_type" id="f_doctype" value="{{ dt0 }}">
 <div class="wrap">
 
   <div class="preview">
+    {% if edit_mode %}<div class="editbar">✎ 修正モード（この受注書/配達書を上書きします）</div>{% endif %}
     <div class="rcpt">
       <div class="rcpt-top"><span>受注事業所：<strong id="pv_dept">{{ department }}</strong></span><span id="pv_orderdate"></span></div>
       <div class="rcpt-title" id="pv_title">施行受注書</div>
@@ -104,8 +113,8 @@
     <div class="panel">
       <h2>帳票種別</h2>
       <div class="doctype" id="doctypeBox">
-        <label class="on"><input type="radio" name="doctype_radio" value="施行受注書" checked> 施行受注書</label>
-        <label><input type="radio" name="doctype_radio" value="配達書"> 配達書</label>
+        <label class="{{ 'on' if dt0=='施行受注書' else '' }}"><input type="radio" name="doctype_radio" value="施行受注書" {{ 'checked' if dt0=='施行受注書' else '' }}> 施行受注書</label>
+        <label class="{{ 'on' if dt0=='配達書' else '' }}"><input type="radio" name="doctype_radio" value="配達書" {{ 'checked' if dt0=='配達書' else '' }}> 配達書</label>
       </div>
       <div style="font-size:11px; color:var(--mut); margin-top:6px;">配達書＝アレンジ・鉢物・花束など日時の決まった配達物。施行受注書＝葬儀施行用。</div>
     </div>
@@ -113,41 +122,50 @@
     <div class="panel">
       <h2>基本情報</h2>
       <div class="ofield"><label>部門</label>
+        {% if edit_mode %}
+        <input type="hidden" name="department" id="f_dept" value="{{ department }}">
+        <input type="text" value="{{ department }}" readonly style="background:#f0f0f0; color:#666;"> <span class="sub" style="font-size:11px;">（変更不可）</span>
+        {% else %}
         <select name="department" id="f_dept" class="nav">
           {% for d in departments %}<option value="{{ d }}" {{ 'selected' if d==department else '' }}>{{ d }}</option>{% endfor %}
-        </select></div>
+        </select>
+        {% endif %}
+      </div>
 
       <div class="ofield delivery-only"><label>用途</label>
-        <select name="purpose" id="f_purpose" class="nav"><option value="お悔やみ">お悔やみ</option><option value="お祝い">お祝い</option></select></div>
+        <select name="purpose" id="f_purpose" class="nav">
+          <option value="お悔やみ" {{ 'selected' if h.purpose=='お悔やみ' or not h.purpose else '' }}>お悔やみ</option>
+          <option value="お祝い" {{ 'selected' if h.purpose=='お祝い' else '' }}>お祝い</option>
+        </select></div>
 
-      <div class="ofield"><label id="lab_souke">御葬家名</label><input type="text" name="souke" id="f_souke" class="nav" placeholder="例：田中" autocomplete="off"></div>
-      <div class="ofield delivery-only"><label id="lab_name2">喪主名</label><input type="text" name="name2" id="f_name2" class="nav" autocomplete="off"></div>
+      <div class="ofield"><label id="lab_souke">御葬家名</label><input type="text" name="souke" id="f_souke" class="nav" placeholder="例：田中" autocomplete="off" value="{{ h.souke or '' }}"></div>
+      <div class="ofield delivery-only"><label id="lab_name2">喪主名</label><input type="text" name="name2" id="f_name2" class="nav" autocomplete="off" value="{{ h.name2 or '' }}"></div>
 
-      <div class="ofield"><label>受注日</label><input type="date" name="order_date" id="f_order" class="nav" value="{{ today }}"></div>
+      <div class="ofield"><label>受注日</label><input type="date" name="order_date" id="f_order" class="nav" value="{{ h.order_date or today }}"></div>
 
-      <div class="ofield delivery-only"><label>配達日時 <span style="font-size:11px;color:var(--mut);">（時刻まで指定）</span></label><input type="datetime-local" name="delivery_at" id="f_delivery" class="nav"></div>
+      <div class="ofield delivery-only"><label>配達日時 <span style="font-size:11px;color:var(--mut);">（時刻まで指定）</span></label><input type="datetime-local" name="delivery_at" id="f_delivery" class="nav" value="{{ h.delivery_at or '' }}"></div>
 
-      <div class="ofield shikou-only"><label>施行予定日</label><input type="date" name="service_date" id="f_service" class="nav"></div>
-      <div class="ofield shikou-only"><label>撤収予定日 <span style="font-size:11px;color:var(--mut);">（既定＝施行の翌日）</span></label><input type="date" name="teardown_date" id="f_teardown" class="nav"></div>
+      <div class="ofield shikou-only"><label>施行予定日</label><input type="date" name="service_date" id="f_service" class="nav" value="{{ h.service_date or '' }}"></div>
+      <div class="ofield shikou-only"><label>撤収予定日 <span style="font-size:11px;color:var(--mut);">（既定＝施行の翌日）</span></label><input type="date" name="teardown_date" id="f_teardown" class="nav" value="{{ h.teardown_date or '' }}"></div>
 
       <div class="ofield"><label>得意先 <span class="delivery-only" style="font-size:11px;color:var(--mut);">（個人宅は空欄でOK）</span></label>
-        <input type="text" name="customer" id="f_customer" class="nav" list="cust_list" placeholder="一覧から選択 or 入力（新規もOK）">
+        <input type="text" name="customer" id="f_customer" class="nav" list="cust_list" placeholder="一覧から選択 or 入力（新規もOK）" value="{{ h.customer or '' }}">
         <datalist id="cust_list"></datalist></div>
 
-      <div class="ofield shikou-only"><label>式場・住所</label><input type="text" name="venue" id="f_venue" class="nav"></div>
-      <div class="ofield delivery-only"><label>届け先住所</label><input type="text" name="deliver_address" id="f_daddr" class="nav" autocomplete="off"></div>
-      <div class="ofield delivery-only"><label>届け先電話</label><input type="text" name="deliver_phone" id="f_dtel" class="nav" inputmode="tel" autocomplete="off"></div>
+      <div class="ofield shikou-only"><label>式場・住所</label><input type="text" name="venue" id="f_venue" class="nav" value="{{ h.venue or '' }}"></div>
+      <div class="ofield delivery-only"><label>届け先住所</label><input type="text" name="deliver_address" id="f_daddr" class="nav" autocomplete="off" value="{{ h.deliver_address or '' }}"></div>
+      <div class="ofield delivery-only"><label>届け先電話</label><input type="text" name="deliver_phone" id="f_dtel" class="nav" inputmode="tel" autocomplete="off" value="{{ h.deliver_phone or '' }}"></div>
 
       <div class="ofield"><label>性別</label>
-        <select name="gender" class="nav"><option value=""></option><option value="男">男</option><option value="女">女</option></select></div>
+        <select name="gender" class="nav"><option value=""></option><option value="男" {{ 'selected' if h.gender=='男' else '' }}>男</option><option value="女" {{ 'selected' if h.gender=='女' else '' }}>女</option></select></div>
 
       <div class="ofield delivery-only"><label>領収（現金）</label>
-        <select name="cash_receipt" id="f_cash" class="nav"><option value=""></option><option value="有">有</option><option value="無">無</option></select></div>
+        <select name="cash_receipt" id="f_cash" class="nav"><option value="" {{ 'selected' if not h.cash_receipt else '' }}></option><option value="有" {{ 'selected' if h.cash_receipt=='有' else '' }}>有</option><option value="無" {{ 'selected' if h.cash_receipt=='無' else '' }}>無</option></select></div>
       <div class="ofield delivery-only"><label>領収書</label>
-        <select name="receipt_needed" id="f_rneed" class="nav"><option value=""></option><option value="要">要</option><option value="不要">不要</option></select></div>
-      <div class="ofield delivery-only"><label>領収書 宛名</label><input type="text" name="receipt_name" id="f_rname" class="nav" autocomplete="off" placeholder="領収書が要の場合"></div>
+        <select name="receipt_needed" id="f_rneed" class="nav"><option value="" {{ 'selected' if not h.receipt_needed else '' }}></option><option value="要" {{ 'selected' if h.receipt_needed=='要' else '' }}>要</option><option value="不要" {{ 'selected' if h.receipt_needed=='不要' else '' }}>不要</option></select></div>
+      <div class="ofield delivery-only"><label>領収書 宛名</label><input type="text" name="receipt_name" id="f_rname" class="nav" autocomplete="off" placeholder="領収書が要の場合" value="{{ h.receipt_name or '' }}"></div>
 
-      <div class="ofield"><label>備考</label><textarea name="note" id="f_note" rows="2"></textarea></div>
+      <div class="ofield"><label>備考</label><textarea name="note" id="f_note" rows="2">{{ h.note or '' }}</textarea></div>
     </div>
 
     <div class="panel">
@@ -169,11 +187,11 @@
           <input type="number" id="f_move_amt" class="nav" min="0" placeholder="0" style="width:130px;"></div>
       </div>
     </div>
-    <input type="hidden" name="money_transfer" id="f_money">
+    <input type="hidden" name="money_transfer" id="f_money" value="{{ h.money_transfer or '' }}">
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <button type="submit" name="action" value="save" class="btn" id="saveBtn">保存</button>
-      <button type="submit" name="action" value="print" class="btn ghost" id="printBtn">保存してA4印刷</button>
+      <button type="submit" name="action" value="save" class="btn" id="saveBtn">{{ '更新を保存' if edit_mode else '保存' }}</button>
+      <button type="submit" name="action" value="print" class="btn ghost" id="printBtn">{{ '更新してA4印刷' if edit_mode else '保存してA4印刷' }}</button>
     </div>
   </div>
 </div>
@@ -184,7 +202,10 @@
   const cats = {{ categories | tojson }};
   const deliveryCats = {{ delivery_categories | tojson }};
   const deptCustomers = {{ dept_customers | tojson }};
+  const initLines = {{ init_lines | tojson }};
+  const editMode = {{ edit_mode | tojson }};
   const yen = v => { v=Number(v||0); return '¥'+new Intl.NumberFormat('ja-JP').format(Math.round(v)); };
+  const esc = s => (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const linesBox = document.getElementById('lines');
   const form = document.getElementById('orderForm');
   const g = id => document.getElementById(id);
@@ -195,32 +216,29 @@
   const isDeliv = () => g('f_doctype').value === '配達書';
   const currentCats = () => isDeliv() ? deliveryCats : cats;
 
-  function catOptions(sel){
-    const cur = currentCats();
-    const v = sel ? sel.value : cur[0];
-    return cur.map(c=>`<option value="${c}" ${c===v?'selected':''}>${c}</option>`).join('');
-  }
-
-  function makeLine(cat){
+  function makeLine(cat, d){
+    d = d || {};
     const row = document.createElement('div'); row.className='lcard';
     const cur = currentCats();
     const chosen = cur.includes(cat) ? cat : cur[0];
     const opts = cur.map(c=>`<option value="${c}" ${c===chosen?'selected':''}>${c}</option>`).join('');
+    const hasProd = (d.product != null && d.product !== '');
     row.innerHTML =
       `<div class="lcard-top">`+
         `<select class="nav line_category" name="line_category" aria-label="カテゴリ">${opts}</select>`+
-        `<span class="pname-cell"><button type="button" class="pname-add">＋品名</button>`+
-          `<input class="nav line_product" name="line_product" type="text" placeholder="品名" aria-label="品名" autocomplete="off" style="display:none"></span>`+
+        `<span class="pname-cell"><button type="button" class="pname-add" ${hasProd?'style="display:none"':''}>＋品名</button>`+
+          `<input class="nav line_product" name="line_product" type="text" placeholder="品名" aria-label="品名" autocomplete="off" value="${esc(d.product)}" ${hasProd?'':'style="display:none"'}></span>`+
         `<button type="button" class="line_del" title="削除" aria-label="この明細を削除">×</button>`+
       `</div>`+
       `<div class="lcard-fields">`+
-        `<div class="fld"><span class="flab">上代(販売額)</span><input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="任意" aria-label="上代"></div>`+
-        `<div class="fld"><span class="flab">受注額(単価)</span><input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="0" aria-label="受注額"></div>`+
-        `<div class="fld"><span class="flab">本数</span><input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="1" aria-label="本数"></div>`+
-        `<div class="fld"><span class="flab">税区分</span><select class="nav line_tax" name="line_tax" aria-label="税区分"><option value="税別">税別</option><option value="税込">税込</option></select></div>`+
+        `<div class="fld"><span class="flab">上代(販売額)</span><input class="nav line_list_price" name="line_list_price" type="number" min="0" inputmode="numeric" placeholder="任意" aria-label="上代" value="${esc(d.list_price)}"></div>`+
+        `<div class="fld"><span class="flab">受注額(単価)</span><input class="nav line_unit_price" name="line_unit_price" type="number" min="0" inputmode="numeric" placeholder="0" aria-label="受注額" value="${esc(d.unit_price)}"></div>`+
+        `<div class="fld"><span class="flab">本数</span><input class="nav line_qty" name="line_qty" type="number" min="0" inputmode="numeric" value="${d.qty!=null&&d.qty!==''?esc(d.qty):'1'}" aria-label="本数"></div>`+
+        `<div class="fld"><span class="flab">税区分</span><select class="nav line_tax" name="line_tax" aria-label="税区分"><option value="税別" ${d.tax_kind!=='税込'?'selected':''}>税別</option><option value="税込" ${d.tax_kind==='税込'?'selected':''}>税込</option></select></div>`+
         `<div class="fld amt"><span class="flab">合計</span><b class="line_amt">¥0</b></div>`+
         `<label class="movechk shikou-only"><input type="checkbox" class="line_move"> 売上金移動の対象</label>`+
-      `</div>`;
+      `</div>`+
+      `<input type="hidden" class="line_page_id" name="line_page_id" value="${esc(d.line_page_id)}">`;
     linesBox.appendChild(row);
     row.querySelector('.line_del').addEventListener('click',()=>{row.remove();render();});
     const padd=row.querySelector('.pname-add'), pinp=row.querySelector('.line_product');
@@ -232,17 +250,16 @@
 
   function setCustList(){
     const list = (deptCustomers[g('f_dept').value] || []);
-    g('cust_list').innerHTML = list.map(n=>`<option value="${n}">`).join('');
+    g('cust_list').innerHTML = list.map(n=>`<option value="${esc(n)}">`).join('');
   }
 
-  // 日付の既定（施行=受注の翌日、撤収=施行の翌日）
+  // 日付の既定（新規時のみ：施行=受注の翌日、撤収=施行の翌日）
   function addDays(s,n){ if(!s) return ''; const p=s.split('-'); const d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); const m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${dd}`; }
-  let teardownManual=false;
+  let teardownManual = editMode;  // 編集時は既存値を尊重し自動補完しない
   g('f_teardown').addEventListener('input',()=>{teardownManual=true;});
   function syncTeardown(){ if(!teardownManual) g('f_teardown').value=addDays(g('f_service').value,1); }
   g('f_service').addEventListener('change',syncTeardown);
-  if(!g('f_service').value) g('f_service').value=addDays(g('f_order').value,1);
-  syncTeardown();
+  if(!editMode){ if(!g('f_service').value) g('f_service').value=addDays(g('f_order').value,1); syncTeardown(); }
 
   // 売上金移動
   function updateMoney(){ const amt=Number(g('f_move_amt').value||0); g('f_money').value = (!isDeliv() && moveDest && amt>0) ? `${moveDest}へ ¥${amt.toLocaleString('ja-JP')}` : ''; }
@@ -251,7 +268,7 @@
     if(pct>0){ let base=0; document.querySelectorAll('.lcard').forEach(row=>{const chk=row.querySelector('.line_move'); if(chk&&chk.checked) base+=Number(row.querySelector('.line_unit_price').value||0)*Number(row.querySelector('.line_qty').value||0);}); g('f_move_amt').value=Math.round(base*pct/100)||''; }
     updateMoney();
   }
-  function refreshMoveBox(){ moveDest=MOVE[g('f_dept').value]||''; const show=(!isDeliv() && moveDest); g('moveBox').style.display=show?'':'none'; g('moveDest').textContent=moveDest; if(!show){g('f_money').value='';} }
+  function refreshMoveBox(){ moveDest=MOVE[g('f_dept').value]||''; const show=(!isDeliv() && moveDest); g('moveBox').style.display=show?'':'none'; g('moveDest').textContent=moveDest; if(!show && !editMode){g('f_money').value='';} }
   g('movePct').addEventListener('change',recalcMove);
   g('f_move_amt').addEventListener('input',updateMoney);
 
@@ -262,7 +279,6 @@
     document.querySelectorAll('#doctypeBox label').forEach(l=>{
       l.classList.toggle('on', l.querySelector('input').value===dt);
     });
-    // 既存明細のカテゴリ候補を貼り替え（選択が無効なら先頭に）
     const cur = currentCats();
     document.querySelectorAll('.line_category').forEach(sel=>{
       const v = sel.value;
@@ -335,7 +351,7 @@
     const sec=g('pv_sections'); sec.innerHTML='';
     cur.forEach(c=>{
       const items=byCat[c]||[]; if(!items.length) return; let sub=0;
-      const rows=items.map(it=>{sub+=it.amt; return `<tr><td>${it.prod||''}</td><td class="num">${it.lp?yen(it.lp):''}</td><td class="num">${it.up?yen(it.up):''}</td><td class="num">${it.q||''}</td><td class="num">${it.amt?yen(it.amt):''}</td></tr>`;}).join('');
+      const rows=items.map(it=>{sub+=it.amt; return `<tr><td>${esc(it.prod)||''}</td><td class="num">${it.lp?yen(it.lp):''}</td><td class="num">${it.up?yen(it.up):''}</td><td class="num">${it.q||''}</td><td class="num">${it.amt?yen(it.amt):''}</td></tr>`;}).join('');
       const head=`<tr><td>品名</td><td>上代</td><td>受注額</td><td>本数</td><td>合計</td></tr>`;
       const label = dv ? c : (SEC_LABEL[c]||c);
       sec.insertAdjacentHTML('beforeend',`<div class="rcpt-sec">【${label}】</div><table class="rcpt-tbl"><thead>${head}</thead><tbody>${rows}<tr><td class="num" colspan="4"><b>${c} 小計</b></td><td class="num"><b>${yen(sub)}</b></td></tr></tbody></table>`);
@@ -354,7 +370,8 @@
   ['input','change'].forEach(ev=>form.addEventListener(ev,render));
   g('f_dept').addEventListener('change', ()=>{ setCustList(); refreshMoveBox(); render(); });
   setCustList();
-  makeLine(currentCats()[0]);
+  if(initLines && initLines.length){ initLines.forEach(l=>makeLine(l.category, l)); }
+  else { makeLine(currentCats()[0]); }
   applyDocType();
 
   // 必須チェック＋二重送信防止

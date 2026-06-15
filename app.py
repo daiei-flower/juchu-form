@@ -113,64 +113,228 @@ def _number(x):
         return {"number": None}
 
 
+def _header_props(header):
+    """ヘッダ(受注書/配達書)のNotionプロパティ。帳票種別で施行系/配達系を出し分け。"""
+    doc_type = header.get("doc_type") or "施行受注書"
+    is_deliv = doc_type == "配達書"
+    hp = {
+        H["doc_type"]: _select(doc_type),
+        H["souke"]: _title(header.get("souke")),
+        H["order_date"]: _date(header.get("order_date")),
+        H["customer"]: _select(header.get("customer")),
+        H["gender"]: _select(header.get("gender")),
+        H["tax_kind"]: _select(header.get("tax_kind")),
+        H["note"]: _text(header.get("note")),
+    }
+    if is_deliv:
+        hp.update({
+            H["purpose"]: _select(header.get("purpose")),
+            H["delivery_at"]: _date(header.get("delivery_at")),
+            H["name2"]: _text(header.get("name2")),
+            H["deliver_address"]: _text(header.get("deliver_address")),
+            H["deliver_phone"]: _text(header.get("deliver_phone")),
+            H["cash_receipt"]: _select(header.get("cash_receipt")),
+            H["receipt_needed"]: _select(header.get("receipt_needed")),
+            H["receipt_name"]: _text(header.get("receipt_name")),
+        })
+    else:
+        hp.update({
+            H["service_date"]: _date(header.get("service_date")),
+            H["teardown_date"]: _date(header.get("teardown_date")),
+            H["venue"]: _text(header.get("venue")),
+            H["money_transfer"]: _text(header.get("money_transfer")),
+        })
+    return hp
+
+
+def _line_props(ln):
+    return {
+        L["product"]: _title(ln.get("product")),
+        L["category"]: _select(ln.get("category")),
+        L["list_price"]: _number(ln.get("list_price")),
+        L["unit_price"]: _number(ln.get("unit_price")),
+        L["qty"]: _number(ln.get("qty")),
+        L["tax"]: _select(ln.get("tax_kind") or "税別"),
+    }
+
+
 def create_order(department, header, lines):
     src = SOURCES.get(department)
     if not src:
         raise RuntimeError(f"部門が未設定です: {department}")
     if not TOKEN:
         raise RuntimeError("NOTION_TOKEN が未設定です")
-    doc_type = header.get("doc_type") or "施行受注書"
-    is_deliv = doc_type == "配達書"
     with httpx.Client(timeout=60) as client:
-        hp = {
-            H["doc_type"]: _select(doc_type),
-            H["souke"]: _title(header.get("souke")),
-            H["order_date"]: _date(header.get("order_date")),
-            H["customer"]: _select(header.get("customer")),
-            H["gender"]: _select(header.get("gender")),
-            H["tax_kind"]: _select(header.get("tax_kind")),
-            H["note"]: _text(header.get("note")),
-        }
-        if is_deliv:
-            hp.update({
-                H["purpose"]: _select(header.get("purpose")),
-                H["delivery_at"]: _date(header.get("delivery_at")),
-                H["name2"]: _text(header.get("name2")),
-                H["deliver_address"]: _text(header.get("deliver_address")),
-                H["deliver_phone"]: _text(header.get("deliver_phone")),
-                H["cash_receipt"]: _select(header.get("cash_receipt")),
-                H["receipt_needed"]: _select(header.get("receipt_needed")),
-                H["receipt_name"]: _text(header.get("receipt_name")),
-            })
-        else:
-            hp.update({
-                H["service_date"]: _date(header.get("service_date")),
-                H["teardown_date"]: _date(header.get("teardown_date")),
-                H["venue"]: _text(header.get("venue")),
-                H["money_transfer"]: _text(header.get("money_transfer")),
-            })
         r = client.post(f"{API}/pages", headers=_headers(),
-                        json={"parent": {"database_id": src["order_header"]}, "properties": hp})
+                        json={"parent": {"database_id": src["order_header"]}, "properties": _header_props(header)})
         if r.status_code != 200:
             raise RuntimeError(f"受注書の作成に失敗 {r.status_code}: {r.text[:300]}")
         hid = r.json()["id"]
-        for ln in lines:
-            if not (ln.get("product") or ln.get("unit_price")):
-                continue
-            lp = {
-                L["product"]: _title(ln.get("product")),
-                L["rel"]: {"relation": [{"id": hid}]},
-                L["category"]: _select(ln.get("category")),
-                L["list_price"]: _number(ln.get("list_price")),
-                L["unit_price"]: _number(ln.get("unit_price")),
-                L["qty"]: _number(ln.get("qty")),
-                L["tax"]: _select(ln.get("tax_kind") or "税別"),
-            }
-            rr = client.post(f"{API}/pages", headers=_headers(),
-                             json={"parent": {"database_id": src["order_line"]}, "properties": lp})
-            if rr.status_code != 200:
-                raise RuntimeError(f"明細の作成に失敗 {rr.status_code}: {rr.text[:300]}")
+        new_ids = []
+        try:
+            for ln in lines:
+                if not (ln.get("product") or ln.get("unit_price")):
+                    continue
+                lp = _line_props(ln)
+                lp[L["rel"]] = {"relation": [{"id": hid}]}
+                rr = client.post(f"{API}/pages", headers=_headers(),
+                                 json={"parent": {"database_id": src["order_line"]}, "properties": lp})
+                if rr.status_code != 200:
+                    raise RuntimeError(f"明細の作成に失敗 {rr.status_code}: {rr.text[:300]}")
+                new_ids.append(rr.json()["id"])
+        except Exception:
+            # 途中失敗：作成済みのヘッダ＋明細をアーカイブして巻き戻す
+            for pid in new_ids + [hid]:
+                try:
+                    client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
     return hid
+
+
+def _existing_line_ids(client, department, page_id):
+    """指定受注書にぶら下がる既存明細(Notion)のページID集合。"""
+    ldb = SOURCES.get(department, {}).get("order_line")
+    ids = set()
+    if not ldb:
+        return ids
+    rq = client.post(f"{API}/databases/{ldb}/query", headers=_headers(),
+                     json={"filter": {"property": L["rel"], "relation": {"contains": page_id}},
+                           "page_size": 100})
+    if rq.status_code == 200:
+        ids = {it["id"] for it in rq.json().get("results", [])}
+    return ids
+
+
+def update_order(department, page_id, header, lines):
+    """既存受注書/配達書を更新。ヘッダPATCH＋明細upsert（line_page_idありはPATCH/なしは新規）、
+    Notion上にあって今回送信されなかった明細はアーカイブ（＝削除）。"""
+    src = SOURCES.get(department)
+    if not src:
+        raise RuntimeError(f"部門が未設定です: {department}")
+    if not TOKEN:
+        raise RuntimeError("NOTION_TOKEN が未設定です")
+    with httpx.Client(timeout=60) as client:
+        existing = _existing_line_ids(client, department, page_id)
+        r = client.patch(f"{API}/pages/{page_id}", headers=_headers(),
+                         json={"properties": _header_props(header)})
+        if r.status_code != 200:
+            raise RuntimeError(f"受注書の更新に失敗 {r.status_code}: {r.text[:300]}")
+        submitted = set()
+        new_ids = []
+        try:
+            for ln in lines:
+                if not (ln.get("product") or ln.get("unit_price")):
+                    continue
+                lid = ln.get("line_page_id")
+                lp = _line_props(ln)
+                if lid:
+                    rr = client.patch(f"{API}/pages/{lid}", headers=_headers(),
+                                      json={"properties": lp})
+                    submitted.add(lid)
+                else:
+                    lp[L["rel"]] = {"relation": [{"id": page_id}]}
+                    rr = client.post(f"{API}/pages", headers=_headers(),
+                                     json={"parent": {"database_id": src["order_line"]}, "properties": lp})
+                if rr.status_code != 200:
+                    raise RuntimeError(f"明細の更新に失敗 {rr.status_code}: {rr.text[:300]}")
+                if not lid:
+                    new_ids.append(rr.json()["id"])
+        except Exception:
+            for pid in new_ids:  # 今回新規作成した明細だけ巻き戻す
+                try:
+                    client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
+        for lid in existing - submitted:
+            client.patch(f"{API}/pages/{lid}", headers=_headers(), json={"archived": True})
+    return page_id
+
+
+def delete_order(department, page_id):
+    """受注書/配達書をまるごと取消（ヘッダ＋ぶら下がる明細をアーカイブ＝非表示化）。"""
+    if not TOKEN:
+        raise RuntimeError("NOTION_TOKEN が未設定です")
+    with httpx.Client(timeout=60) as client:
+        for lid in _existing_line_ids(client, department, page_id):
+            try:
+                client.patch(f"{API}/pages/{lid}", headers=_headers(), json={"archived": True})
+            except Exception:  # noqa: BLE001
+                pass
+        r = client.patch(f"{API}/pages/{page_id}", headers=_headers(), json={"archived": True})
+        if r.status_code != 200:
+            raise RuntimeError(f"取消に失敗 {r.status_code}: {r.text[:300]}")
+
+
+def recent_orders(department, limit=60):
+    """部門の受注書/配達書を新しい順（作成日時降順）で一覧取得（修正・取消用）。"""
+    src = SOURCES.get(department, {})
+    hdb = src.get("order_header")
+    if not (TOKEN and hdb):
+        return []
+    out = []
+    with httpx.Client(timeout=30) as client:
+        r = client.post(f"{API}/databases/{hdb}/query", headers=_headers(),
+                        json={"sorts": [{"timestamp": "created_time", "direction": "descending"}],
+                              "page_size": limit})
+        if r.status_code != 200:
+            return []
+        for it in r.json().get("results", []):
+            hp = it.get("properties", {})
+            out.append({
+                "id": it["id"],
+                "doc_type": _pget(hp, H["doc_type"]) or "施行受注書",
+                "souke": _pget(hp, H["souke"]),
+                "customer": _pget(hp, H["customer"]),
+                "order_date": _pget(hp, H["order_date"]),
+                "service_date": _pget(hp, H["service_date"]),
+                "delivery_at": _pget(hp, H["delivery_at"]),
+                "purpose": _pget(hp, H["purpose"]),
+            })
+    return out
+
+
+def read_order(page_id):
+    """Notionから受注書/配達書のヘッダ＋明細(line_page_id付き)を読む。(dept, header, lines)。"""
+    if not TOKEN:
+        return None
+    with httpx.Client(timeout=30) as client:
+        rp = client.get(f"{API}/pages/{page_id}", headers=_headers())
+        if rp.status_code != 200:
+            return None
+        page = rp.json()
+        hp = page.get("properties", {})
+        dept = _dept_of((page.get("parent") or {}).get("database_id")) or ""
+        header = {
+            "doc_type": _pget(hp, H["doc_type"]) or "施行受注書",
+            "souke": _pget(hp, H["souke"]), "order_date": _pget(hp, H["order_date"]),
+            "service_date": _pget(hp, H["service_date"]), "teardown_date": _pget(hp, H["teardown_date"]),
+            "customer": _pget(hp, H["customer"]), "venue": _pget(hp, H["venue"]),
+            "gender": _pget(hp, H["gender"]), "money_transfer": _pget(hp, H["money_transfer"]),
+            "tax_kind": _pget(hp, H["tax_kind"]), "note": _pget(hp, H["note"]),
+            "purpose": _pget(hp, H["purpose"]), "delivery_at": _pget(hp, H["delivery_at"]),
+            "name2": _pget(hp, H["name2"]), "deliver_address": _pget(hp, H["deliver_address"]),
+            "deliver_phone": _pget(hp, H["deliver_phone"]), "cash_receipt": _pget(hp, H["cash_receipt"]),
+            "receipt_needed": _pget(hp, H["receipt_needed"]), "receipt_name": _pget(hp, H["receipt_name"]),
+        }
+        lines = []
+        ldb = SOURCES.get(dept, {}).get("order_line")
+        if ldb:
+            rq = client.post(f"{API}/databases/{ldb}/query", headers=_headers(),
+                             json={"filter": {"property": L["rel"], "relation": {"contains": page_id}},
+                                   "page_size": 100})
+            for it in rq.json().get("results", []):
+                lp = it.get("properties", {})
+                lines.append({
+                    "line_page_id": it["id"], "category": _normcat(_pget(lp, L["category"]),
+                        DELIVERY_CATEGORIES if header["doc_type"] == "配達書" else CATEGORIES),
+                    "product": _pget(lp, L["product"]), "tax_kind": _pget(lp, L["tax"]),
+                    "list_price": _pget(lp, L["list_price"]), "unit_price": _pget(lp, L["unit_price"]),
+                    "qty": _pget(lp, L["qty"]),
+                })
+    return dept, header, lines
 
 
 def _pget(props, name):
@@ -204,6 +368,20 @@ def _dept_of(header_db_id):
         if src.get("order_header") == header_db_id:
             return d
     return None
+
+
+def _dept_of_page(page_id):
+    """受注書ページIDから所属部門を割り出す（hidden未送信時のフォールバック）。"""
+    if not TOKEN:
+        return None
+    try:
+        with httpx.Client(timeout=20) as client:
+            r = client.get(f"{API}/pages/{page_id}", headers=_headers())
+            if r.status_code != 200:
+                return None
+            return _dept_of((r.json().get("parent") or {}).get("database_id"))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _select_options(db_id, prop_name):
@@ -251,14 +429,12 @@ def form(request: Request, department: str = "", msg: str = "", err: str = "",
         "dept_customers": dept_customers, "categories": CATEGORIES,
         "delivery_categories": DELIVERY_CATEGORIES,
         "today": datetime.now().strftime("%Y-%m-%d"), "msg": msg, "err": err,
+        "edit_mode": False, "form_action": "/create", "h": {}, "init_lines": [],
     })
 
 
-@app.post("/create")
-async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
-    from urllib.parse import quote
-    from fastapi.responses import RedirectResponse
-    f = await request.form()
+def _parse_form(f):
+    """受注書/配達書フォーム → (department, header, lines, action)。lines は line_page_id 付き。"""
     department = f.get("department") or ""
     header = {k: (f.get(k) or None) for k in
               ("souke", "order_date", "service_date", "teardown_date", "customer",
@@ -268,7 +444,7 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
                "cash_receipt", "receipt_needed", "receipt_name")}
     cats, prods = f.getlist("line_category"), f.getlist("line_product")
     lps, ups, qtys = f.getlist("line_list_price"), f.getlist("line_unit_price"), f.getlist("line_qty")
-    taxes = f.getlist("line_tax")
+    taxes, pids = f.getlist("line_tax"), f.getlist("line_page_id")
     lines = []
     for i in range(len(cats)):
         prod = prods[i] if i < len(prods) else ""
@@ -278,25 +454,122 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
         lines.append({"category": cats[i], "product": prod,
                       "list_price": lps[i] if i < len(lps) else "",
                       "unit_price": up, "qty": (qtys[i] if i < len(qtys) else "") or 1,
-                      "tax_kind": (taxes[i] if i < len(taxes) else "") or "税別"})
-    action = f.get("action") or "save"
+                      "tax_kind": (taxes[i] if i < len(taxes) else "") or "税別",
+                      "line_page_id": (pids[i] if i < len(pids) else "") or None})
+    return department, header, lines, (f.get("action") or "save")
+
+
+def _print_response(request, department, header, lines):
+    is_deliv = (header.get("doc_type") == "配達書")
+    d = _build_d(department, header, lines)
+    tpl = "print_delivery.html" if is_deliv else "print.html"
+    cats = DELIVERY_CATEGORIES if is_deliv else CATEGORIES
+    return templates.TemplateResponse(tpl, {
+        "request": request, "d": d, "categories": cats,
+        "fmt_money": _fmt_money, "autoprint": True, "company_name": COMPANY})
+
+
+@app.post("/create")
+async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    department, header, lines, action = _parse_form(f)
     try:
         create_order(department, header, lines)
         is_deliv = (header.get("doc_type") == "配達書")
         if action == "print":
             # 直前の入力内容からそのまま印刷（Notion再取得のラグを避ける）
-            d = _build_d(department, header, lines)
-            tpl = "print_delivery.html" if is_deliv else "print.html"
-            cats = DELIVERY_CATEGORIES if is_deliv else CATEGORIES
-            return templates.TemplateResponse(tpl, {
-                "request": request, "d": d, "categories": cats,
-                "fmt_money": _fmt_money, "autoprint": True, "company_name": COMPANY})
+            return _print_response(request, department, header, lines)
         name = header.get("souke") or ""
         m = quote(f"{name} の配達書を登録しました" if is_deliv
                   else f"{name}家 の受注書を登録しました")
-        return RedirectResponse(f"/?department={quote(department)}&msg={m}", status_code=303)
+        return RedirectResponse(f"/list?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/?department={quote(department)}&err={quote(str(e))}",
+                                status_code=303)
+
+
+@app.get("/list", response_class=HTMLResponse)
+def order_list(request: Request, department: str = "", msg: str = "", err: str = "",
+               _u: str = Depends(auth)):
+    depts = list(SOURCES.keys())
+    if department not in depts:
+        department = depts[0] if depts else ""
+    return templates.TemplateResponse("list.html", {
+        "request": request, "departments": depts, "department": department,
+        "orders": recent_orders(department), "msg": msg, "err": err,
+    })
+
+
+@app.get("/edit/{page_id}", response_class=HTMLResponse)
+def order_edit(request: Request, page_id: str, err: str = "", _u: str = Depends(auth)):
+    from datetime import datetime
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import quote
+    got = read_order(page_id)
+    if not got:
+        return RedirectResponse("/list", status_code=303)
+    dept, header, lines = got
+    if not dept:
+        return RedirectResponse(f"/list?err={quote('この受注書の部門が特定できませんでした')}",
+                                status_code=303)
+    # 日付は input 用に整形（date=10桁、datetime-local=16桁）
+    h = dict(header)
+    for k in ("order_date", "service_date", "teardown_date"):
+        if h.get(k):
+            h[k] = h[k][:10]
+    if h.get("delivery_at"):
+        h["delivery_at"] = h["delivery_at"][:16]
+    init_lines = [{
+        "line_page_id": l["line_page_id"], "category": l["category"], "product": l["product"],
+        "list_price": l["list_price"], "unit_price": l["unit_price"],
+        "qty": l["qty"], "tax_kind": l["tax_kind"] or "税別",
+    } for l in lines]
+    depts = list(SOURCES.keys())
+    return templates.TemplateResponse("form.html", {
+        "request": request, "departments": depts, "department": dept,
+        "dept_customers": {d: _candidates(d) for d in depts},
+        "categories": CATEGORIES, "delivery_categories": DELIVERY_CATEGORIES,
+        "today": datetime.now().strftime("%Y-%m-%d"), "msg": "", "err": err,
+        "edit_mode": True, "form_action": f"/update/{page_id}",
+        "h": h, "init_lines": init_lines,
+    })
+
+
+@app.post("/update/{page_id}")
+async def order_update(request: Request, page_id: str,
+                       _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    department, header, lines, action = _parse_form(f)
+    try:
+        update_order(department, page_id, header, lines)
+        if action == "print":
+            return _print_response(request, department, header, lines)
+        return RedirectResponse(
+            f"/list?department={quote(department)}&msg={quote('修正を保存しました')}",
+            status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/edit/{page_id}?err={quote('更新に失敗：'+str(e))}",
+                                status_code=303)
+
+
+@app.post("/delete/{page_id}")
+async def order_delete(request: Request, page_id: str,
+                       _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    department = f.get("department") or (_dept_of_page(page_id) or "")
+    try:
+        delete_order(department, page_id)
+        return RedirectResponse(
+            f"/list?department={quote(department)}&msg={quote('受注書/配達書を取消しました')}",
+            status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/list?department={quote(department)}&err={quote('取消に失敗：'+str(e))}",
                                 status_code=303)
 
 
