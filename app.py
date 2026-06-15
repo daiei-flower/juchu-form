@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
@@ -46,8 +46,16 @@ R = {"customer": "得意先", "date": "日付", "amount": "売上額",
 P = {"item": "品名", "date": "日付", "supplier": "仕入先", "amount": "金額", "note": "備考"}  # 仕入
 LS = {"item": "項目", "date": "年月", "amount": "金額", "note": "備考"}        # 月間ロス
 
-SOURCES = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))["departments"]
+_CFG = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))
+SOURCES = _CFG["departments"]
+SEIKA_DB = _CFG.get("seika_cost", "")
 TOKEN = os.environ.get("NOTION_TOKEN", "")
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+SEIKA_MODEL = "claude-sonnet-4-6"
+# 生花原価明細DBのプロパティ名（本体 380d8bdf... と一致）
+SK = {"title": "花材・色", "date": "出荷日", "material": "花材", "color": "色",
+      "qty": "本数", "unit": "単価", "amount": "金額", "supplier": "仕入先",
+      "dept": "部門", "note": "備考"}
 PASSWORD = os.environ.get("FORM_PASSWORD", "")
 USER = os.environ.get("FORM_USER", "staff")
 COMPANY = os.environ.get("COMPANY_NAME", "株式会社大栄フラワーサービス福井")
@@ -723,6 +731,277 @@ async def oroshi_save(request: Request, _u: str = Depends(auth), _c: None = Depe
     except Exception as e:  # noqa: BLE001
         return RedirectResponse(f"/oroshi?month={quote(month)}&err={quote('保存に失敗：'+str(e))}",
                                 status_code=303)
+
+
+# ───────────────────────── 生花原価（スキャン→AI取込） ─────────────────────────
+SEIKA_PROMPT = """この画像/PDFは生花の「出荷伝票一覧（卸→各部門への原価移動）」です。\
+各明細行を読み取り、JSONで返してください。
+
+列：出荷日 / 伝票NO / コード(大分類:中菊・SP菊など) / 商品名(品種・色・等級・サイズ) / 出荷本数 / 売上単価 / 仕入単価 / 仕入先。
+
+各行を次の形に正規化してください：
+- date: 出荷日 (YYYY-MM-DD)
+- material: 花材名。コード列の大分類、または商品名の先頭の花材名。例 中菊/SP菊/小菊/デンファレ/ドラセナ類/トルコキキョウ/デルフィニューム/カーネーション/オリエンタル百合/胡蝶蘭 等。
+- color: 色だけ。例 白/ピンク/薄紫/赤/黄/オレンジ/紫。色が無ければ ""。
+- qty: 出荷本数 (整数)
+- unit: 売上単価 (整数)
+- supplier: 仕入先（㈱○○・京○○など。読めなければ ""）
+重要な正規化ルール：「業務」「秀」「2L」「L」「M」「精の一世」「トリトンLV」等の等級・規格・サイズ・品種コードは捨て、花材名と色だけ残す。
+例:「トルコキキョウ・業務・ピンク」→ material=トルコキキョウ, color=ピンク。
+例:「デルフィニューム・トリトンLV・薄紫」→ material=デルフィニューム, color=薄紫。
+例: コード=中菊, 商品名=「2L・精の一世・白・秀・2L」→ material=中菊, color=白。
+合計行・小計行・見出しは除外。出力は {"lines":[{...}, ...]} のJSONのみ。説明文は不要。"""
+
+
+def seika_extract(file_bytes, content_type, filename):
+    """アップロードされたPDF/画像をClaude visionで読み、明細行のリストを返す。"""
+    if not ANTHROPIC_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY が未設定です（RenderのEnvに登録してください）")
+    b64 = __import__("base64").standard_b64encode(file_bytes).decode()
+    name = (filename or "").lower()
+    ct = (content_type or "").lower()
+    if "pdf" in ct or name.endswith(".pdf"):
+        media = {"type": "document",
+                 "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
+    else:
+        mt = "image/png" if name.endswith(".png") else "image/jpeg"
+        media = {"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64}}
+    content = [{"type": "text", "text": SEIKA_PROMPT}, media]
+    r = httpx.post("https://api.anthropic.com/v1/messages",
+                   headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"},
+                   json={"model": SEIKA_MODEL, "max_tokens": 8000,
+                         "messages": [{"role": "user", "content": content}]},
+                   timeout=180)
+    if r.status_code != 200:
+        raise RuntimeError(f"AI読み取りに失敗 {r.status_code}: {r.text[:300]}")
+    txt = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+    s, e = txt.find("{"), txt.rfind("}")
+    if s < 0 or e < 0:
+        raise RuntimeError("AIの出力を解析できませんでした")
+    data = json.loads(txt[s:e + 1])
+    out = []
+    for ln in data.get("lines", []):
+        q = int(_num(ln.get("qty")))
+        u = int(_num(ln.get("unit")))
+        if not (q or u):
+            continue
+        out.append({"date": (ln.get("date") or "")[:10], "material": (ln.get("material") or "").strip(),
+                    "color": (ln.get("color") or "").strip(), "qty": q, "unit": u,
+                    "supplier": (ln.get("supplier") or "").strip(), "amount": q * u})
+    return out
+
+
+def seika_aggregate(lines):
+    """明細行を 花材×色 / 色別 / 全体 に集計（プレビュー・分析共通）。"""
+    from collections import defaultdict
+    mc = defaultdict(lambda: [0, 0])   # (material,color)->[qty,amount]
+    col = defaultdict(int)             # color->qty
+    tot_q = tot_a = 0
+    for l in lines:
+        q, a = int(l.get("qty") or 0), int(l.get("amount") or (int(l.get("qty") or 0) * int(l.get("unit") or 0)))
+        mc[(l.get("material") or "?", l.get("color") or "")][0] += q
+        mc[(l.get("material") or "?", l.get("color") or "")][1] += a
+        if l.get("color"):
+            col[l["color"]] += q
+        tot_q += q
+        tot_a += a
+    matcolor = [{"material": m, "color": c, "qty": q, "amount": a,
+                 "avg": (a / q) if q else 0} for (m, c), (q, a) in mc.items()]
+    matcolor.sort(key=lambda x: -x["amount"])
+    colors = [{"color": c, "qty": q} for c, q in sorted(col.items(), key=lambda x: -x[1])]
+    return {"matcolor": matcolor, "colors": colors, "total_qty": tot_q, "total_amount": tot_a,
+            "unit_avg": (tot_a / tot_q) if tot_q else 0}
+
+
+def _seika_props(dept, l):
+    mat, col = l.get("material") or "", l.get("color") or ""
+    q = int(_num(l.get("qty")))
+    u = int(_num(l.get("unit")))
+    return {
+        SK["title"]: _title(f"{mat}・{col}" if col else mat),
+        SK["date"]: _date(l.get("date") or None),
+        SK["material"]: _select(mat or None),
+        SK["color"]: _select(col or None),
+        SK["qty"]: _number(q),
+        SK["unit"]: _number(u),
+        SK["amount"]: _number(q * u),
+        SK["supplier"]: _text(l.get("supplier")),
+        SK["dept"]: _select(dept),
+    }
+
+
+def _seika_query(client, dept=None, month=None):
+    """生花原価明細を取得。dept/month で絞り込み（client側でフィルタ）。(page_id, line)のリスト。"""
+    out = []
+    if not (TOKEN and SEIKA_DB):
+        return out
+    cursor = None
+    while True:
+        body = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        r = client.post(f"{API}/databases/{SEIKA_DB}/query", headers=_headers(), json=body)
+        if r.status_code != 200:
+            break
+        j = r.json()
+        for it in j.get("results", []):
+            pr = it.get("properties", {})
+            d = _pget(pr, SK["date"]) or ""
+            dp = _pget(pr, SK["dept"])
+            if dept and dp != dept:
+                continue
+            if month and d[:7] != month:
+                continue
+            out.append((it["id"], {
+                "date": d, "material": _pget(pr, SK["material"]), "color": _pget(pr, SK["color"]),
+                "qty": _pget(pr, SK["qty"]) or 0, "unit": _pget(pr, SK["unit"]) or 0,
+                "amount": _pget(pr, SK["amount"]) or 0, "supplier": _pget(pr, SK["supplier"])}))
+        if not j.get("has_more"):
+            break
+        cursor = j.get("next_cursor")
+    return out
+
+
+def save_seika(dept, lines):
+    """生花原価明細を保存。同部門・同じ出荷日範囲の既存行をarchiveしてから作成（再取込で重複しない）。"""
+    if not (TOKEN and SEIKA_DB):
+        raise RuntimeError("生花原価DBが未設定です")
+    dates = [l["date"] for l in lines if l.get("date")]
+    dmin, dmax = (min(dates), max(dates)) if dates else (None, None)
+    with httpx.Client(timeout=120) as client:
+        # 同部門・取込期間に重なる既存行をアーカイブ
+        if dmin and dmax:
+            for pid, l in _seika_query(client, dept=dept):
+                if l["date"] and dmin <= l["date"] <= dmax:
+                    client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+        created = 0
+        for l in lines:
+            if not (int(_num(l.get("qty"))) or int(_num(l.get("unit")))):
+                continue
+            rr = client.post(f"{API}/pages", headers=_headers(),
+                             json={"parent": {"database_id": SEIKA_DB}, "properties": _seika_props(dept, l)})
+            if rr.status_code != 200:
+                raise RuntimeError(f"生花原価の保存に失敗 {rr.status_code}: {rr.text[:300]}")
+            created += 1
+    return created, (dmin, dmax)
+
+
+def _month_sales(dept, month):
+    """その月の受注書/配達書の売上合計（原価率の分母）。order_header→明細を集計。"""
+    src = SOURCES.get(dept, {})
+    hdb, ldb = src.get("order_header"), src.get("order_line")
+    if not (TOKEN and hdb and ldb):
+        return 0
+    total = 0
+    with httpx.Client(timeout=60) as client:
+        r = client.post(f"{API}/databases/{hdb}/query", headers=_headers(),
+                        json={"sorts": [{"timestamp": "created_time", "direction": "descending"}],
+                              "page_size": 100})
+        if r.status_code != 200:
+            return 0
+        ids = []
+        for it in r.json().get("results", []):
+            hp = it.get("properties", {})
+            basis = (_pget(hp, H["delivery_at"]) or _pget(hp, H["service_date"])
+                     or _pget(hp, H["order_date"]) or "")
+            if basis[:7] == month:
+                ids.append(it["id"])
+        for hid in ids:
+            rq = client.post(f"{API}/databases/{ldb}/query", headers=_headers(),
+                             json={"filter": {"property": L["rel"], "relation": {"contains": hid}},
+                                   "page_size": 100})
+            for it in rq.json().get("results", []):
+                lp = it.get("properties", {})
+                up = _num(_pget(lp, L["unit_price"]))
+                qy = _num(_pget(lp, L["qty"])) or 1
+                total += up * qy
+    return total
+
+
+def read_seika_report(dept, month):
+    with httpx.Client(timeout=60) as client:
+        rows = [l for _, l in _seika_query(client, dept=dept, month=month)]
+    agg = seika_aggregate(rows)
+    sales = _month_sales(dept, month)
+    agg["sales"] = sales
+    agg["cost_ratio"] = (agg["total_amount"] / sales) if sales else None
+    return agg
+
+
+@app.get("/seika", response_class=HTMLResponse)
+def seika_upload(request: Request, department: str = "", msg: str = "", err: str = "",
+                 _u: str = Depends(auth)):
+    depts = list(SOURCES.keys())
+    if department not in depts:
+        department = depts[0] if depts else ""
+    return templates.TemplateResponse("seika_upload.html", {
+        "request": request, "departments": depts, "department": department,
+        "ai_ready": bool(ANTHROPIC_KEY), "msg": msg, "err": err})
+
+
+@app.post("/seika/extract", response_class=HTMLResponse)
+async def seika_do_extract(request: Request, department: str = "", file: UploadFile = File(...),
+                           _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    try:
+        data = await file.read()
+        if not data:
+            raise RuntimeError("ファイルが空です")
+        lines = seika_extract(data, file.content_type, file.filename)
+        if not lines:
+            raise RuntimeError("明細を読み取れませんでした。画像が鮮明か確認してください。")
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/seika?department={quote(department)}&err={quote(str(e))}",
+                                status_code=303)
+    return templates.TemplateResponse("seika_confirm.html", {
+        "request": request, "department": department, "lines": lines,
+        "agg": seika_aggregate(lines), "fmt_money": _fmt_money})
+
+
+@app.post("/seika/save")
+async def seika_save(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    department = f.get("department") or ""
+    dates, mats, cols = f.getlist("ln_date"), f.getlist("ln_material"), f.getlist("ln_color")
+    qtys, units, sups = f.getlist("ln_qty"), f.getlist("ln_unit"), f.getlist("ln_supplier")
+    lines = []
+    for i in range(len(mats)):
+        q = int(_num(qtys[i] if i < len(qtys) else 0))
+        u = int(_num(units[i] if i < len(units) else 0))
+        if not ((mats[i] or "").strip() and (q or u)):
+            continue
+        lines.append({"date": (dates[i] if i < len(dates) else "")[:10],
+                      "material": mats[i].strip(), "color": (cols[i] if i < len(cols) else "").strip(),
+                      "qty": q, "unit": u, "supplier": (sups[i] if i < len(sups) else "").strip(),
+                      "amount": q * u})
+    try:
+        created, (dmin, _dmax) = save_seika(department, lines)
+        month = (dmin or "")[:7]
+        return RedirectResponse(
+            f"/seika/report?department={quote(department)}&month={quote(month)}"
+            f"&msg={quote(f'{created}行を保存しました')}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/seika?department={quote(department)}&err={quote('保存に失敗：'+str(e))}",
+                                status_code=303)
+
+
+@app.get("/seika/report", response_class=HTMLResponse)
+def seika_report(request: Request, department: str = "", month: str = "", msg: str = "",
+                 _u: str = Depends(auth)):
+    from datetime import datetime
+    depts = list(SOURCES.keys())
+    if department not in depts:
+        department = depts[0] if depts else ""
+    if not (len(month) == 7 and month[4] == "-"):
+        month = datetime.now().strftime("%Y-%m")
+    agg = read_seika_report(department, month)
+    return templates.TemplateResponse("seika_report.html", {
+        "request": request, "departments": depts, "department": department, "month": month,
+        "agg": agg, "fmt_money": _fmt_money, "msg": msg})
 
 
 def _fmt_money(v):

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生花原価の分析</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0; }
+  .tab { border:1px solid var(--bd); border-radius:8px; padding:7px 12px; font-size:13px; text-decoration:none; color:#333; background:#fff; }
+  .tab.on { border-color:var(--pri); background:var(--pribg); color:var(--pri); font-weight:700; }
+  .monthbar { display:flex; align-items:center; gap:10px; margin:0 0 14px; flex-wrap:wrap; }
+  .monthbar input { padding:8px 10px; border:1px solid var(--bd); border-radius:8px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+  .card { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; }
+  .card .l { font-size:12px; color:var(--mut); }
+  .card .v { font-size:24px; font-weight:700; margin-top:4px; }
+  .card .v small { font-size:13px; font-weight:400; color:var(--mut); }
+  .card.hi { background:var(--pribg); border-color:var(--pri); }
+  .grid2 { display:grid; grid-template-columns:1fr 1.4fr; gap:16px; }
+  @media (max-width:780px){ .grid2 { grid-template-columns:1fr; } }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; }
+  .panel h2 { font-size:14px; margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:8px 10px; border-bottom:1px solid #eee; font-size:13px; text-align:left; }
+  th { font-size:11px; color:var(--mut); background:#fafafa; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .bar { height:10px; background:var(--pri); border-radius:5px; }
+  .barbg { background:#eef1f6; border-radius:5px; }
+  .empty { color:var(--mut); padding:24px; text-align:center; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .note { font-size:12px; color:var(--mut); margin-top:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>生花原価の分析</h1>
+    <div class="sub">現場の原価率管理用（正式な月次仕入とは別）。色の使用傾向・花材ごとの平均単価・原価率。</div>
+  </div>
+  <a class="btn small" href="/seika?department={{ department|urlencode }}">＋ 取込（スキャン）</a>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+
+  <div class="tabs">
+    {% for d in departments %}
+    <a class="tab {{ 'on' if d==department else '' }}" href="/seika/report?department={{ d|urlencode }}&month={{ month }}">{{ d }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="monthbar">
+    <label>対象月：</label>
+    <input type="month" id="monthPick" value="{{ month }}">
+  </div>
+
+  {% if agg.total_qty == 0 %}
+  <div class="panel"><div class="empty">{{ month }} の{{ department }}の生花原価データはありません。<br>
+    <a class="btn ghost small" href="/seika?department={{ department|urlencode }}" style="margin-top:10px;">＋ 出荷伝票を取込む</a></div></div>
+  {% else %}
+
+  <div class="cards">
+    <div class="card hi"><div class="l">原価率（生花原価 ÷ 受注書売上）</div>
+      <div class="v">{% if agg.cost_ratio is not none %}{{ '%.1f'|format(agg.cost_ratio*100) }}<small>%</small>{% else %}—{% endif %}</div></div>
+    <div class="card"><div class="l">生花原価 合計</div><div class="v">¥{{ fmt_money(agg.total_amount) }}</div></div>
+    <div class="card"><div class="l">受注書売上（その月）</div><div class="v">¥{{ fmt_money(agg.sales) }}</div></div>
+    <div class="card"><div class="l">総本数</div><div class="v">{{ fmt_money(agg.total_qty) }}<small> 本</small></div></div>
+    <div class="card"><div class="l">1本あたり平均単価</div><div class="v">¥{{ '%.1f'|format(agg.unit_avg) }}</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>色別 使用本数</h2>
+      <table>
+        <thead><tr><th>色</th><th class="n">本数</th><th style="width:40%;"></th></tr></thead>
+        <tbody>
+          {% set cmax = agg.colors[0].qty if agg.colors else 1 %}
+          {% for c in agg.colors %}
+          <tr>
+            <td>{{ c.color }}</td>
+            <td class="n">{{ fmt_money(c.qty) }}</td>
+            <td><div class="barbg"><div class="bar" style="width:{{ (c.qty / cmax * 100)|round(0,'floor') }}%;"></div></div></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>花材×色ごと（本数・金額・平均単価）</h2>
+      <table>
+        <thead><tr><th>花材・色</th><th class="n">本数</th><th class="n">金額</th><th class="n">平均単価</th></tr></thead>
+        <tbody>
+          {% for m in agg.matcolor %}
+          <tr>
+            <td>{{ m.material }}{% if m.color %}・{{ m.color }}{% endif %}</td>
+            <td class="n">{{ fmt_money(m.qty) }}</td>
+            <td class="n">¥{{ fmt_money(m.amount) }}</td>
+            <td class="n">¥{{ '%.1f'|format(m.avg) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">※ 原価率の分母は、この部門のその月の受注書・配達書の売上合計（明細から算出）です。あなたの正式な月次・損益（P&L）には反映しません。</div>
+  {% endif %}
+</div>
+
+<script>
+  document.getElementById("monthPick").addEventListener("change", function(){
+    if(this.value) location.href="/seika/report?department={{ department|urlencode }}&month="+encodeURIComponent(this.value);
+  });
+</script>
+</body>
+</html>

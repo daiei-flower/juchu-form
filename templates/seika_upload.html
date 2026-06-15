@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生花原価の取込</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:680px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:11px 18px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:18px; }
+  label.fld { display:block; font-size:13px; color:var(--mut); margin:14px 0 6px; font-weight:700; }
+  select, input[type=file] { width:100%; padding:10px; border:1px solid var(--bd); border-radius:8px; font-size:14px; background:#fff; }
+  .drop { border:2px dashed var(--bd); border-radius:10px; padding:22px; text-align:center; color:var(--mut); margin-top:6px; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+  .note { font-size:12px; color:var(--mut); line-height:1.7; margin-top:14px; }
+  .warn { background:#fff7e6; border:1px solid #f0c36d; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>生花原価の取込（スキャン → 自動読み取り）</h1>
+    <div class="sub">出荷伝票（卸→各部門）の印刷物を読み込み、花材・色ごとに集計します。現場の原価率管理用・正式な月次仕入とは別です。</div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn ghost small" href="/seika/report?department={{ department|urlencode }}">分析を見る</a>
+    <a class="btn ghost small" href="/">受注書フォームへ</a>
+  </div>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="msg ng">{{ err }}</div>{% endif %}
+  {% if not ai_ready %}<div class="warn">⚠️ AI読み取りキー（ANTHROPIC_API_KEY）が未設定です。管理者にRenderの環境変数登録を依頼してください。</div>{% endif %}
+
+  <div class="panel">
+    <form method="post" action="/seika/extract" enctype="multipart/form-data" id="upForm">
+      <label class="fld" for="dept">部門</label>
+      <select name="department" id="dept">
+        {% for d in departments %}<option value="{{ d }}" {{ 'selected' if d==department else '' }}>{{ d }}</option>{% endfor %}
+      </select>
+
+      <label class="fld" for="file">出荷伝票（PDF / 写真）</label>
+      <input type="file" name="file" id="file" accept="application/pdf,image/*" required>
+      <div class="drop">PDF・JPEG・PNG に対応。複数ページのPDFもそのままでOK。</div>
+
+      <div style="margin-top:18px;">
+        <button type="submit" class="btn" id="goBtn">AIで読み取る →</button>
+        <span class="sub" style="margin-left:8px;">読み取り後に内容を確認・修正してから保存します。</span>
+      </div>
+    </form>
+  </div>
+
+  <div class="note">
+    読み取り内容：出荷日・花材（中菊・SP菊・トルコキキョウ等）・色・本数・単価。<br>
+    「業務・秀・2L」などの等級/サイズは自動で除き、「花材＋色」に正規化します（例：トルコキキョウ・業務・ピンク → トルコキキョウ・ピンク）。<br>
+    AIの読み取りは完璧ではないので、次の画面で金額をご確認ください。1回の読み取りで数円かかります。
+  </div>
+</div>
+
+<script>
+  document.getElementById("upForm").addEventListener("submit", function(){
+    var b=document.getElementById("goBtn");
+    b.disabled=true; b.textContent="読み取り中…（10〜30秒）";
+  });
+</script>
+</body>
+</html>
