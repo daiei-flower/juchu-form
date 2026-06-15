@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>生花原価の取込</title>
+<title>仕入れ入力</title>
 <style>
   :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
   * { box-sizing:border-box; }
@@ -29,12 +29,12 @@
 <body>
 <header>
   <div>
-    <h1>生花原価の取込（スキャン → 自動読み取り）</h1>
-    <div class="sub">出荷伝票（卸→各部門）の印刷物を読み込み、花材・色ごとに集計します。現場の原価率管理用・正式な月次仕入とは別です。</div>
+    <h1>仕入れ入力（出荷伝票スキャン → 自動読み取り）</h1>
+    <div class="sub">生花の出荷伝票（卸→各部門）の印刷物を読み込み、花材・色ごとに集計します。現場の原価率管理用・正式な月次仕入とは別です。</div>
   </div>
   <div style="display:flex; gap:8px;">
-    <a class="btn ghost small" href="/seika/report?department={{ department|urlencode }}">分析を見る</a>
-    <a class="btn ghost small" href="/">受注書フォームへ</a>
+    <a class="btn ghost small" href="/seika/report?department={{ department|urlencode }}">仕入れ分析</a>
+    <a class="btn ghost small" href="/">🏠 ホーム</a>
   </div>
 </header>
 

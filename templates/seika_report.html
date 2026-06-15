@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>生花原価の分析</title>
+<title>仕入れ分析</title>
 <style>
   :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
   * { box-sizing:border-box; }
@@ -44,10 +44,13 @@
 <body>
 <header>
   <div>
-    <h1>生花原価の分析</h1>
+    <h1>仕入れ分析</h1>
     <div class="sub">現場の原価率管理用（正式な月次仕入とは別）。色の使用傾向・花材ごとの平均単価・原価率。</div>
   </div>
-  <a class="btn small" href="/seika?department={{ department|urlencode }}">＋ 取込（スキャン）</a>
+  <div style="display:flex; gap:8px;">
+    <a class="btn ghost small" href="/">🏠 ホーム</a>
+    <a class="btn small" href="/seika?department={{ department|urlencode }}">＋ 仕入れ入力</a>
+  </div>
 </header>
 
 <div class="wrap">

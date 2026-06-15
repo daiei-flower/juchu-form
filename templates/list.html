@@ -41,9 +41,10 @@
     <div class="sub">直したい行の「編集」、間違って作った行は「取消」。新しい順（直近{{ orders|length }}件）。</div>
   </div>
   <div style="display:flex; gap:8px;">
+    <a class="btn ghost" href="/">🏠 ホーム</a>
     <a class="btn ghost" href="/oroshi">卸部 月次入力</a>
-    <a class="btn ghost" href="/seika">生花原価の取込</a>
-    <a class="btn" href="/?department={{ department|urlencode }}">＋ 新規作成</a>
+    <a class="btn ghost" href="/seika">仕入れ入力</a>
+    <a class="btn" href="/new?department={{ department|urlencode }}">＋ 新規作成</a>
   </div>
 </header>
 
@@ -82,7 +83,7 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty">この部門の受注書・配達書はまだありません。<br><a class="btn ghost small" href="/?department={{ department|urlencode }}" style="margin-top:10px;">＋ 新規作成</a></div>
+    <div class="empty">この部門の受注書・配達書はまだありません。<br><a class="btn ghost small" href="/new?department={{ department|urlencode }}" style="margin-top:10px;">＋ 新規作成</a></div>
     {% endif %}
   </div>
 </div>

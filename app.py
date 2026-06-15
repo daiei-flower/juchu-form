@@ -529,6 +529,30 @@ def healthz():
 
 
 @app.get("/", response_class=HTMLResponse)
+def dashboard(request: Request, _u: str = Depends(auth)):
+    """責任者用トップ。全部門の直近の動きと、各機能への入口。"""
+    from datetime import datetime
+    depts = list(SOURCES.keys())
+    month = datetime.now().strftime("%Y-%m")
+    recent, counts = [], {}
+    for d in depts:
+        rs = recent_orders(d, limit=30)
+        c = 0
+        for o in rs:
+            basis = o.get("delivery_at") or o.get("service_date") or o.get("order_date") or ""
+            o["_dept"] = d
+            o["_date"] = basis
+            if basis[:7] == month:
+                c += 1
+        counts[d] = c
+        recent.extend(rs)
+    recent.sort(key=lambda o: o.get("_date") or "", reverse=True)
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request, "departments": depts, "recent": recent[:12],
+        "counts": counts, "month": month})
+
+
+@app.get("/new", response_class=HTMLResponse)
 def form(request: Request, department: str = "", msg: str = "", err: str = "",
          _u: str = Depends(auth)):
     from datetime import datetime
@@ -598,7 +622,7 @@ async def create(request: Request, _u: str = Depends(auth), _c: None = Depends(c
                   else f"{name}家 の受注書を登録しました")
         return RedirectResponse(f"/list?department={quote(department)}&msg={m}", status_code=303)
     except Exception as e:  # noqa: BLE001
-        return RedirectResponse(f"/?department={quote(department)}&err={quote(str(e))}",
+        return RedirectResponse(f"/new?department={quote(department)}&err={quote(str(e))}",
                                 status_code=303)
 
 

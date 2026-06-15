@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>業務ポータル（責任者用）</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:14px 20px; }
+  header h1 { font-size:18px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); margin-top:2px; }
+  .wrap { max-width:1000px; margin:0 auto; padding:18px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-bottom:22px; }
+  .tile { display:block; text-decoration:none; color:inherit; background:#fff; border:1px solid var(--bd); border-radius:12px; padding:18px 20px; transition:.12s; }
+  .tile:hover { border-color:var(--pri); box-shadow:0 2px 10px rgba(37,99,235,.10); transform:translateY(-1px); }
+  .tile.primary { background:var(--pri); color:#fff; border-color:var(--pri); }
+  .tile .ic { font-size:24px; }
+  .tile .t { font-size:16px; font-weight:700; margin-top:8px; }
+  .tile .d { font-size:12px; opacity:.85; margin-top:4px; line-height:1.5; }
+  h2 { font-size:14px; color:var(--mut); margin:0 0 10px; }
+  .counts { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px; }
+  .cnt { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:10px 16px; }
+  .cnt .l { font-size:12px; color:var(--mut); }
+  .cnt .v { font-size:20px; font-weight:700; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:6px 0; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:9px 14px; border-bottom:1px solid #eee; font-size:13px; text-align:left; }
+  th { font-size:11px; color:var(--mut); background:#fafafa; }
+  .tag { display:inline-block; padding:1px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+  .tag-shikou { background:#eef0f3; color:#555; }
+  .tag-haitatsu { background:#e8f7ee; color:#1c8a44; }
+  .tag-dept { background:#eef4ff; color:#2563eb; }
+  .empty { color:var(--mut); padding:22px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>業務ポータル <span class="sub">責任者用</span></h1>
+  <div class="sub">受注書の作成・仕入れの入力と分析。全部門の状況を共有できます（顧客データは現場参考用・損益とは別）。</div>
+</header>
+
+<div class="wrap">
+  <div class="tiles">
+    <a class="tile primary" href="/new">
+      <div class="ic">📝</div><div class="t">受注書・配達書を作成</div>
+      <div class="d">施行受注書／配達書を作成・印刷。修正や取消も。</div>
+    </a>
+    <a class="tile" href="/seika">
+      <div class="ic">📥</div><div class="t">仕入れ入力</div>
+      <div class="d">出荷伝票（生花原価）をスキャン → AIで自動読み取り。</div>
+    </a>
+    <a class="tile" href="/seika/report">
+      <div class="ic">📊</div><div class="t">仕入れ分析</div>
+      <div class="d">原価率・色別の使用本数・花材ごとの平均単価。</div>
+    </a>
+    <a class="tile" href="/oroshi">
+      <div class="ic">🧾</div><div class="t">卸部 月次入力</div>
+      <div class="d">得意先別の販売件数・売上、仕入、月間ロス。</div>
+    </a>
+    <a class="tile" href="/list">
+      <div class="ic">📚</div><div class="t">一覧（修正・取消）</div>
+      <div class="d">作成済みの受注書・配達書を直す／取り消す。</div>
+    </a>
+  </div>
+
+  <h2>今月（{{ month }}）の受注書・配達書 件数</h2>
+  <div class="counts">
+    {% for d in departments %}
+    <div class="cnt"><div class="l">{{ d }}</div><div class="v">{{ counts[d] }} <span style="font-size:12px;font-weight:400;color:var(--mut);">件</span></div></div>
+    {% endfor %}
+  </div>
+
+  <h2>最近の受注書・配達書（全部門）</h2>
+  <div class="panel">
+    {% if recent %}
+    <table>
+      <thead><tr><th>部門</th><th>種別</th><th>日付</th><th>名義</th><th>得意先</th><th></th></tr></thead>
+      <tbody>
+        {% for o in recent %}
+        {% set is_h = o.doc_type == '配達書' %}
+        <tr>
+          <td><span class="tag tag-dept">{{ o._dept }}</span></td>
+          <td><span class="tag {{ 'tag-haitatsu' if is_h else 'tag-shikou' }}">{{ '配達書' if is_h else '施行' }}</span></td>
+          <td>{{ (o._date or '')[:16]|replace('T',' ') }}</td>
+          <td>{{ o.souke or '（名義なし）' }}{% if o.souke and not is_h %} 家{% endif %}</td>
+          <td>{{ o.customer or '' }}</td>
+          <td style="text-align:right;"><a href="/edit/{{ o.id }}" style="color:var(--pri);text-decoration:none;font-size:13px;">編集</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">まだ受注書・配達書がありません。<a href="/new" style="color:var(--pri);">＋ 作成する</a></div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>
