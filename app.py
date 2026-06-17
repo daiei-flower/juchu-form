@@ -49,6 +49,11 @@ LS = {"item": "項目", "date": "年月", "amount": "金額", "note": "備考"} 
 _CFG = json.loads((BASE / "sources.json").read_text(encoding="utf-8"))
 SOURCES = _CFG["departments"]
 SEIKA_DB = _CFG.get("seika_cost", "")
+SHIJISHO_DB = _CFG.get("shijisho", "")
+STAFF = _CFG.get("staff", [])
+VEHICLES = _CFG.get("vehicles", [])
+# 日次作業指示書DBのプロパティ名（本体 382d8bdf... と一致）
+SHJ = {"title": "指示日", "date": "対象日", "blocks": "ブロックJSON", "editor": "更新者"}
 TOKEN = os.environ.get("NOTION_TOKEN", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SEIKA_MODEL = "claude-sonnet-4-6"
@@ -1026,6 +1031,166 @@ def seika_report(request: Request, department: str = "", month: str = "", msg: s
     return templates.TemplateResponse("seika_report.html", {
         "request": request, "departments": depts, "department": department, "month": month,
         "agg": agg, "fmt_money": _fmt_money, "msg": msg})
+
+
+# ───────────────────────── 日次 作業指示書 ─────────────────────────
+def _rich_chunks(s):
+    """rich_text は1要素2000字上限。分割して複数要素で書き込む。読込は_pgetで自動連結。"""
+    s = s or ""
+    parts = [s[i:i + 1900] for i in range(0, len(s), 1900)] or [""]
+    return {"rich_text": [{"text": {"content": p}} for p in parts]}
+
+
+def _order_summary(client, dept, page_id, doc_type):
+    """受注書/配達書の明細をカテゴリ別本数に集約（例『祭壇1・供花12・花束2』）。"""
+    ldb = SOURCES.get(dept, {}).get("order_line")
+    if not ldb:
+        return ""
+    rq = client.post(f"{API}/databases/{ldb}/query", headers=_headers(),
+                     json={"filter": {"property": L["rel"], "relation": {"contains": page_id}},
+                           "page_size": 100})
+    if rq.status_code != 200:
+        return ""
+    agg = {}
+    order = []
+    for it in rq.json().get("results", []):
+        lp = it.get("properties", {})
+        cat = (_pget(lp, L["category"]) or "その他").strip()
+        qty = _num(_pget(lp, L["qty"])) or 0
+        if cat not in agg:
+            agg[cat] = 0
+            order.append(cat)
+        agg[cat] += qty
+    return "・".join(f"{c}{int(agg[c])}" for c in order if agg[c])
+
+
+def day_orders(target_date):
+    """指定日(YYYY-MM-DD)の全部門の受注書・配達書を手札用カードにして返す。
+    施行=施行予定日、配達=配達日時 が当日のものを集める（受注書DBは読むだけ）。"""
+    if not TOKEN:
+        return []
+    cards = []
+    with httpx.Client(timeout=60) as client:
+        for dept in SOURCES:
+            hdb = SOURCES.get(dept, {}).get("order_header")
+            if not hdb:
+                continue
+            r = client.post(f"{API}/databases/{hdb}/query", headers=_headers(),
+                            json={"sorts": [{"timestamp": "created_time", "direction": "descending"}],
+                                  "page_size": 100})
+            if r.status_code != 200:
+                continue
+            for it in r.json().get("results", []):
+                hp = it.get("properties", {})
+                doc = _pget(hp, H["doc_type"]) or "施行受注書"
+                is_h = doc == "配達書"
+                basis = _pget(hp, H["delivery_at"]) if is_h else _pget(hp, H["service_date"])
+                if not basis or basis[:10] != target_date:
+                    continue
+                cards.append({
+                    "order_page_id": it["id"],
+                    "department": dept,
+                    "doc_type": doc,
+                    "souke_or_customer": (_pget(hp, H["customer"]) if is_h else _pget(hp, H["souke"])) or "",
+                    "datetime": basis or "",
+                    "place": (_pget(hp, H["deliver_address"]) if is_h else _pget(hp, H["venue"])) or "",
+                    "items_summary": _order_summary(client, dept, it["id"], doc),
+                })
+    # 時刻順（時刻なしは後ろ）
+    cards.sort(key=lambda c: (len(c["datetime"]) < 16, c["datetime"]))
+    return cards
+
+
+def _shijisho_page(client, target_date):
+    """指定日の指示書ページ(page_id, props)を返す。なければ(None,None)。"""
+    if not SHIJISHO_DB:
+        return None, None
+    r = client.post(f"{API}/databases/{SHIJISHO_DB}/query", headers=_headers(),
+                    json={"filter": {"property": SHJ["date"], "date": {"equals": target_date}},
+                          "page_size": 1})
+    if r.status_code == 200:
+        res = r.json().get("results", [])
+        if res:
+            return res[0]["id"], res[0].get("properties", {})
+    return None, None
+
+
+def read_shijisho(target_date):
+    """指定日の保存済みブロック配列を返す（なければ空配列）。"""
+    if not TOKEN or not SHIJISHO_DB:
+        return []
+    with httpx.Client(timeout=30) as client:
+        _pid, props = _shijisho_page(client, target_date)
+        if not props:
+            return []
+        raw = _pget(props, SHJ["blocks"]) or ""
+        try:
+            return json.loads(raw) if raw else []
+        except (ValueError, TypeError):
+            return []
+
+
+def save_shijisho(target_date, blocks, editor=""):
+    """指定日の指示書を保存（同日の既存ページをarchiveしてから作成＝1日1ページ）。"""
+    if not (TOKEN and SHIJISHO_DB):
+        raise RuntimeError("指示書DBが未設定です")
+    payload = json.dumps(blocks, ensure_ascii=False)
+    with httpx.Client(timeout=60) as client:
+        pid, _props = _shijisho_page(client, target_date)
+        if pid:
+            client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+        props = {
+            SHJ["title"]: _title(target_date),
+            SHJ["date"]: _date(target_date),
+            SHJ["blocks"]: _rich_chunks(payload),
+            SHJ["editor"]: _text(editor),
+        }
+        r = client.post(f"{API}/pages", headers=_headers(),
+                        json={"parent": {"database_id": SHIJISHO_DB}, "properties": props})
+        if r.status_code != 200:
+            raise RuntimeError(f"指示書の保存に失敗 {r.status_code}: {r.text[:300]}")
+    return len(blocks)
+
+
+@app.get("/shijisho", response_class=HTMLResponse)
+def shijisho_builder(request: Request, date: str = "", msg: str = "", err: str = "",
+                     _u: str = Depends(auth)):
+    from datetime import datetime
+    if not (len(date) == 10 and date[4] == "-" and date[7] == "-"):
+        date = datetime.now().strftime("%Y-%m-%d")
+    cards = day_orders(date)
+    blocks = read_shijisho(date)
+    return templates.TemplateResponse("shijisho.html", {
+        "request": request, "date": date, "cards": cards, "blocks": blocks,
+        "blocks_json": json.dumps(blocks, ensure_ascii=False),
+        "cards_json": json.dumps(cards, ensure_ascii=False),
+        "staff": STAFF, "vehicles": VEHICLES, "msg": msg, "err": err})
+
+
+@app.post("/shijisho/save")
+async def shijisho_save(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    date = f.get("date") or ""
+    try:
+        blocks = json.loads(f.get("blocks") or "[]")
+        n = save_shijisho(date, blocks, editor=_u)
+        return RedirectResponse(
+            f"/shijisho?date={quote(date)}&msg={quote(f'{n}件で保存しました')}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/shijisho?date={quote(date)}&err={quote('保存に失敗：'+str(e))}",
+                                status_code=303)
+
+
+@app.get("/shijisho/print", response_class=HTMLResponse)
+def shijisho_print(request: Request, date: str = "", _u: str = Depends(auth)):
+    from datetime import datetime
+    if not (len(date) == 10 and date[4] == "-"):
+        date = datetime.now().strftime("%Y-%m-%d")
+    return templates.TemplateResponse("shijisho_print.html", {
+        "request": request, "date": date, "blocks": read_shijisho(date),
+        "company_name": COMPANY})
 
 
 def _fmt_money(v):
