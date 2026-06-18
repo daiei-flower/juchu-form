@@ -618,7 +618,11 @@ def _venues():
 
 # ───────────────────────── シフト（月次シフト表の取込・反映） ─────────────────────────
 _SHIFT_SKIP_COLS = {"日付", "曜日", "出社数", "全出社数", "備考", ""}
-_SHIFT_SYM = {"出": "出", "●": "休", "▲": "希望休", "出張": "出張"}
+# 記号の表記ゆれを吸収（半角/別字種も拾う）。未知の値は素通しせず後段で扱う。
+_SHIFT_SYM = {"出": "出", "出勤": "出",
+              "●": "休", "○": "休", "◯": "休", "休": "休",
+              "▲": "希望休", "△": "希望休", "希望休": "希望休",
+              "出張": "出張"}
 
 
 def parse_shift_xlsx(file_bytes):
@@ -627,10 +631,15 @@ def parse_shift_xlsx(file_bytes):
     import io
     import re
     import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    ws = wb.worksheets[0]
-    grid = [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
-            for r in range(1, ws.max_row + 1)]
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception:  # noqa: BLE001
+        raise ValueError("Excelファイルを開けませんでした。壊れていないか、xlsx形式かご確認ください。")
+    try:
+        ws = wb.worksheets[0]
+        grid = [list(row) for row in ws.iter_rows(values_only=True)]
+    finally:
+        wb.close()
     start_year = None
     for row in grid[:3]:
         for v in row:
@@ -677,7 +686,8 @@ def parse_shift_xlsx(file_bytes):
         rec = {}
         for c, nm in cols.items():
             raw = str(row[c] or "").strip() if c < len(row) else ""
-            rec[nm] = _SHIFT_SYM.get(raw, "未記入" if raw == "" else raw)
+            key = raw.replace(" ", "").replace("　", "")
+            rec[nm] = _SHIFT_SYM.get(key, "未記入" if key == "" else key)
         days[date] = rec
     dates = sorted(days.keys())
     if not dates:
@@ -741,6 +751,7 @@ def load_shift_status(date):
                         json={"filter": {"and": [
                             {"property": SHF["start"], "date": {"on_or_before": date}},
                             {"property": SHF["end"], "date": {"on_or_after": date}}]},
+                              "sorts": [{"property": SHF["start"], "direction": "descending"}],
                               "page_size": 5})
         if r.status_code == 200:
             for it in r.json().get("results", []):
@@ -770,8 +781,11 @@ def staff_for_date(date):
     names = sorted(day.keys(), key=lambda n: (dept_rank.get(depts.get(n, ""), 9), n))
     out, seen = [], set()
     for n in names:
+        key = _norm_name(n)
+        if key in seen:        # シフト内の表記ゆれ重複（例「山田 太郎」と「山田太郎」）を排除
+            continue
+        seen.add(key)
         out.append({"name": n, "status": day.get(n, ""), "dept": depts.get(n, "")})
-        seen.add(_norm_name(n))
     for n in load_masters().get("staff", []) or STAFF:
         if n and _norm_name(n) not in seen:
             seen.add(_norm_name(n))
@@ -785,8 +799,12 @@ def default_roster(date):
     dept_rank = {"本部": 0, "福井業務部": 1, "加賀業務部": 2, "福井卸部": 3}
     names = [n for n in day if day.get(n) == "出"]
     names.sort(key=lambda n: (dept_rank.get(depts.get(n, ""), 9), n))
-    roster = []
+    roster, seen = [], set()
     for n in names:
+        key = _norm_name(n)
+        if key in seen:        # 表記ゆれ重複で名簿が二重に出るのを防ぐ
+            continue
+        seen.add(key)
         d = depts.get(n, "")
         roster.append({"name": n, "dept": d,
                        "location": DEPT_LOCATION.get(d, "福井"), "arrive": ""})
@@ -1244,6 +1262,11 @@ async def seika_do_extract(request: Request, department: str = "", file: UploadF
         data = await file.read()
         if not data:
             raise RuntimeError("ファイルが空です")
+        if len(data) > 15 * 1024 * 1024:
+            raise RuntimeError("ファイルが大きすぎます（15MBまで）")
+        name = (file.filename or "").lower()
+        if not name.endswith((".pdf", ".png", ".jpg", ".jpeg")):
+            raise RuntimeError("PDFまたは画像（PNG/JPG）を選んでください")
         lines = seika_extract(data, file.content_type, file.filename)
         if not lines:
             raise RuntimeError("明細を読み取れませんでした。画像が鮮明か確認してください。")
@@ -1343,12 +1366,24 @@ def day_tasks(target_date):
             hdb = SOURCES.get(dept, {}).get("order_header")
             if not hdb:
                 continue
-            r = client.post(f"{API}/databases/{hdb}/query", headers=_headers(),
-                            json={"sorts": [{"timestamp": "created_time", "direction": "descending"}],
-                                  "page_size": 100})
-            if r.status_code != 200:
-                continue
-            for it in r.json().get("results", []):
+            # 作成日時降順を全ページ走査（先付け登録で当日分が100件目以降にあっても取りこぼさない）。
+            # 暴走防止に最大10ページ(=1000件/部門)で打ち切り。
+            rows, cursor, pages = [], None, 0
+            while True:
+                body = {"sorts": [{"timestamp": "created_time", "direction": "descending"}],
+                        "page_size": 100}
+                if cursor:
+                    body["start_cursor"] = cursor
+                r = client.post(f"{API}/databases/{hdb}/query", headers=_headers(), json=body)
+                if r.status_code != 200:
+                    break
+                j = r.json()
+                rows.extend(j.get("results", []))
+                pages += 1
+                if not j.get("has_more") or pages >= 10:
+                    break
+                cursor = j.get("next_cursor")
+            for it in rows:
                 hp = it.get("properties", {})
                 doc = _pget(hp, H["doc_type"]) or "施行受注書"
                 pid = it["id"]
@@ -1415,7 +1450,7 @@ def _normalize_shijisho(raw):
     header.setdefault("souban", "")
     header.setdefault("shijisha", "")
     header.setdefault("roster", [])
-    blocks = data.get("blocks") or []
+    blocks = [b for b in (data.get("blocks") or []) if isinstance(b, dict)]
     # 旧ブロック（staff[]＋vehicle）を assignments[{name,vehicle}] に変換
     for b in blocks:
         if "assignments" not in b:
@@ -1527,6 +1562,12 @@ async def shifts_upload(request: Request, file: UploadFile = File(...),
         raw = await file.read()
         if not raw:
             raise RuntimeError("ファイルが空です")
+        if len(raw) > 5 * 1024 * 1024:
+            raise RuntimeError("ファイルが大きすぎます（5MBまで）")
+        if not (file.filename or "").lower().endswith(".xlsx"):
+            raise RuntimeError("xlsx形式のシフト表を選んでください")
+        if raw[:2] != b"PK":      # xlsx は zip。最低限のマジックバイト確認
+            raise RuntimeError("Excelファイルとして読み取れません")
         parsed = parse_shift_xlsx(raw)
         n = save_shift(parsed, editor=_u)
         msg = f"{parsed['start']}〜{parsed['end']} を取込みました（{n}日分）"

@@ -8,6 +8,7 @@
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing:border-box; }
   body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#eef0f2; color:#111;
+         -webkit-print-color-adjust:exact; print-color-adjust:exact;
          --c-setup:#2563eb; --c-teardown:#e8830c; --c-deliver:#1c8a44; --c-other:#888; }
   .toolbar { padding:10px 16px; background:#fff; border-bottom:1px solid #ddd; }
   .toolbar button { background:#2563eb; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
@@ -30,9 +31,12 @@
   .sec > h2 { font-size:15px; margin:0 0 6px; padding:3px 10px; color:#fff; border-radius:4px; display:inline-block; }
   .h-setup { background:var(--c-setup); } .h-teardown { background:var(--c-teardown); }
   .h-deliver { background:var(--c-deliver); } .h-other { background:var(--c-other); }
-  .block { border:1px solid #bbb; border-left:5px solid #999; border-radius:6px; padding:8px 11px; margin-bottom:7px; page-break-inside:avoid; }
-  .b-setup { border-left-color:var(--c-setup); } .b-teardown { border-left-color:var(--c-teardown); }
-  .b-deliver { border-left-color:var(--c-deliver); } .b-other { border-left-color:var(--c-other); }
+  .block { border:1px solid #bbb; border-left:6px solid #999; border-radius:6px; padding:8px 11px; margin-bottom:7px; page-break-inside:avoid; }
+  /* 白黒印刷でも左罫の線種で区分を判別できるよう、色だけでなくスタイルも変える */
+  .b-setup { border-left-color:var(--c-setup); border-left-style:solid; }
+  .b-teardown { border-left-color:var(--c-teardown); border-left-style:double; border-left-width:7px; }
+  .b-deliver { border-left-color:var(--c-deliver); border-left-style:dashed; }
+  .b-other { border-left-color:var(--c-other); border-left-style:dotted; }
   .block .top { display:flex; align-items:center; gap:8px; }
   .badge { display:inline-block; padding:1px 7px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid #999; }
   .time { font-size:17px; font-weight:700; }
@@ -52,6 +56,8 @@
   .memo b { font-size:11px; color:#555; }
   .cash { font-weight:700; }
   .cash.yes { color:#1c8a44; } .cash.no { color:#888; }
+  /* 現金領収「有」は色に頼らず黒枠バッジで強調（集金漏れ防止） */
+  .cashbox { border:2px solid #111; border-radius:5px; padding:1px 8px; }
   .allempty { text-align:center; color:#888; padding:60px 0; }
   @media print { .toolbar { display:none; } body { background:#fff; } #sheet { width:210mm; min-height:auto; margin:0; box-shadow:none; padding:14mm 15mm; } }
 </style>
@@ -123,7 +129,7 @@
           {% if b.arrive_time %}<span><b>着</b><span class="go">{{ b.arrive_time }}</span></span>{% endif %}
           {% if b.kaishiki_time %}<span><b>開式</b>{{ b.kaishiki_time }}</span>{% endif %}
           {% if b.highway %}<span><b>高速</b>{{ b.highway }}</span>{% endif %}
-          {% if typ == '配達' and b.cash %}<span><b>現金領収</b><span class="cash {{ 'yes' if b.cash=='有' else 'no' }}">{{ b.cash }}</span></span>{% endif %}
+          {% if typ == '配達' and b.cash %}<span class="{{ 'cashbox' if b.cash=='有' else '' }}"><b>現金領収</b><span class="cash {{ 'yes' if b.cash=='有' else 'no' }}">{{ b.cash }}</span></span>{% endif %}
         </div>
         {% set asg = b.assignments or [] %}
         {% if asg %}

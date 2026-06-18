@@ -102,6 +102,9 @@
   .field { display:flex; align-items:center; gap:4px; font-size:12px; color:#444; }
   .field input[type=text].content { flex:1; min-width:160px; }
   .arrowsep { color:var(--mut); font-weight:700; }
+  .custinput { width:100%; font-size:15px; font-weight:700; border:1px solid var(--bd); border-radius:7px; padding:5px 8px; margin:3px 0 1px; }
+  .custinput::placeholder { font-weight:400; color:#aaa; }
+  .placeinput { flex:1; min-width:200px; }
 </style>
 </head>
 <body>
@@ -112,7 +115,7 @@
   <span class="spacer"></span>
   <label class="sub">対象日 <input type="date" id="datePick" value="{{ date }}"></label>
   <a class="btn ghost small" href="/shifts">🗓 シフト</a>
-  <a class="btn ghost small" href="/shijisho/print?date={{ date }}" target="_blank">印刷 / PDF</a>
+  <a class="btn ghost small" id="printBtn" href="/shijisho/print?date={{ date }}" target="_blank">印刷 / PDF</a>
   <a class="btn ghost small" href="/settings">⚙ 設定</a>
   <button type="button" class="btn small" id="saveBtn">保存</button>
 </header>
@@ -177,6 +180,14 @@
   function yen(n){ n=parseFloat(n)||0; return "¥"+Math.round(n).toLocaleString("ja-JP"); }
   function vehOptions(sel){ return '<option value="">車</option>'+VEH.map(v=>'<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(v)+'</option>').join(""); }
   let drag = null;
+
+  // 休／希望休の人（割付時に確認を出す）
+  const OFF = new Set(STAFF.filter(o=>o.status==="休"||o.status==="希望休").map(o=>o.name));
+  const DATE = "{{ date }}";
+  const HAD_SAVED = !!(SAVED && SAVED.length);   // 既存データありなら上書き確認を出す
+  const shForm = document.getElementById("shForm");
+  let dirty=false, initializing=true, suppressUnload=false;
+  function markDirty(){ if(!initializing) dirty=true; }
 
   // ===== セクション生成 =====
   const sectionsEl = document.getElementById("sections");
@@ -304,10 +315,10 @@
     if(isOther){
       html+='<div class="brow"><span class="field" style="flex:1;">内容 <input type="text" class="content" placeholder="作業内容"></span></div>';
     } else {
-      html+='<div class="nm" contenteditable="true">'+esc(b._data.customer||'（得意先なし）')+'</div>'+
+      html+='<input type="text" class="custinput" placeholder="得意先名／会場名" value="'+esc(b._data.customer||'')+'">'+
         (b._data.souke?'<div class="souke">葬家：'+esc(b._data.souke)+'</div>':'')+
         (b._data.purpose?'<div class="place">用途：'+esc(b._data.purpose)+'</div>':'')+
-        '<div class="place" contenteditable="true">会場：'+esc(b._data.place||'')+'</div>'+
+        '<div class="field" style="margin-top:3px;">会場 <input type="text" class="placeinput" placeholder="会場名・住所" value="'+esc(b._data.place||'')+'"></div>'+
         itemsHTML(b._data.items);
     }
     // 時間（出発 → 着）・高速
@@ -325,14 +336,19 @@
       '<div class="brow"><span class="field" style="flex:1;">メモ <input type="text" class="memo" style="flex:1;"></span></div>';
     b.innerHTML=html;
 
-    b.querySelector(".del").onclick=()=>{ b.remove(); refreshHints(); };
-    b.querySelector(".up").onclick=()=>{ const p=b.previousElementSibling; if(p)zone.insertBefore(b,p); };
-    b.querySelector(".down").onclick=()=>{ const n=b.nextElementSibling; if(n)zone.insertBefore(n,b); };
+    b.querySelector(".del").onclick=()=>{ b.remove(); refreshHints(); markDirty(); };
+    b.querySelector(".up").onclick=()=>{ const p=b.previousElementSibling; if(p){zone.insertBefore(b,p); markDirty();} };
+    b.querySelector(".down").onclick=()=>{ const n=b.nextElementSibling; if(n){zone.insertBefore(n,b); markDirty();} };
 
     const sslot=b.querySelector(".staff-slot");
     sslot.addEventListener("dragover",e=>{ if(drag&&drag.kind==="staff"){ e.preventDefault(); sslot.classList.add("over"); } });
     sslot.addEventListener("dragleave",()=>sslot.classList.remove("over"));
-    sslot.addEventListener("drop",e=>{ e.preventDefault(); sslot.classList.remove("over"); if(drag&&drag.kind==="staff") addAssign(b,drag.payload.name,""); });
+    sslot.addEventListener("drop",e=>{ e.preventDefault(); sslot.classList.remove("over");
+      if(drag&&drag.kind==="staff"){
+        const nm=drag.payload.name;
+        if(OFF.has(nm) && !confirm(nm+" さんは休／希望休です。割り付けますか？")) return;
+        addAssign(b,nm,""); markDirty();
+      } });
 
     // 復元
     if(isOther && d.content) b.querySelector(".content").value=d.content;
@@ -349,6 +365,7 @@
     if(d.memo) b.querySelector(".memo").value=d.memo;
 
     zone.appendChild(b);
+    markDirty();
     return b;
   }
   function addAssign(block,name,vehicle){
@@ -358,8 +375,9 @@
     const a=document.createElement("span"); a.className="assign"; a.dataset.name=name;
     a.innerHTML='<span class="tag staff">'+esc(name)+' <span class="x">×</span></span>'+
       '<span class="arr">→</span><select class="vehsel">'+vehOptions(vehicle||"")+'</select>';
-    a.querySelector(".x").onclick=()=>{ a.remove(); if(!wrap.querySelector(".assign")) block.querySelector(".staff-slot .ph").style.display=""; };
+    a.querySelector(".x").onclick=()=>{ a.remove(); if(!wrap.querySelector(".assign")) block.querySelector(".staff-slot .ph").style.display=""; markDirty(); };
     wrap.appendChild(a);
+    markDirty();
   }
 
   // ===== 保存 =====
@@ -378,10 +396,10 @@
           name:a.dataset.name, vehicle:a.querySelector(".vehsel").value||"" }));
         const g=cls=>{ const el=b.querySelector("."+cls); return el?el.value:""; };
         const isOther=t.key==="その他";
-        const nmEl=b.querySelector(".nm[contenteditable]");
-        let customer=nmEl?nmEl.textContent.trim():""; if(customer==="（得意先なし）")customer="";
-        const plEl=b.querySelector(".place[contenteditable]");
-        let place=plEl?plEl.textContent.replace(/^会場：/,"").trim():"";
+        const custEl=b.querySelector(".custinput");
+        const customer=custEl?custEl.value.trim():"";
+        const plEl=b.querySelector(".placeinput");
+        const place=plEl?plEl.value.trim():"";
         out.push({
           task_type:t.key,
           order_page_id:b._data.order_page_id||"", department:b._data.department||"",
@@ -399,16 +417,45 @@
   }
   function fill(){ document.getElementById("blocksInput").value=JSON.stringify(collect());
     document.getElementById("headerInput").value=JSON.stringify(collectHeader()); }
-  function doSave(){ fill(); document.getElementById("shForm").submit(); }
-  document.getElementById("saveBtn").onclick=doSave;
-  document.getElementById("shForm").addEventListener("submit",fill);
-  document.getElementById("datePick").addEventListener("change",function(){ if(this.value) location.href="/shijisho?date="+encodeURIComponent(this.value); });
+
+  // 保存（既存があれば上書き確認）。submit経由に一本化。
+  document.getElementById("saveBtn").onclick=()=>shForm.requestSubmit();
+  shForm.addEventListener("submit", function(e){
+    if(HAD_SAVED && !confirm("この日の指示書を上書き保存します。よろしいですか？")){ e.preventDefault(); return; }
+    fill(); suppressUnload=true;
+  });
+
+  // 印刷：未保存があれば先に保存してから印刷タブを開く（旧版を配るのを防ぐ）
+  document.getElementById("printBtn").onclick=async function(e){
+    e.preventDefault();
+    const url="/shijisho/print?date="+encodeURIComponent(DATE);
+    if(dirty){
+      if(!confirm("未保存の変更があります。保存してから印刷します。よろしいですか？")) return;
+      fill();
+      try{ const r=await fetch("/shijisho/save",{method:"POST",body:new FormData(shForm)}); if(!r.ok) throw 0; dirty=false; }
+      catch(_){ alert("保存に失敗しました。通信状況をご確認ください。"); return; }
+    }
+    window.open(url,"_blank");
+  };
+
+  // 変更検知（フォーム内の入力・選択すべて）
+  shForm.addEventListener("input", markDirty);
+  shForm.addEventListener("change", markDirty);
+  window.addEventListener("beforeunload", function(e){ if(dirty && !suppressUnload){ e.preventDefault(); e.returnValue=""; } });
+
+  // 日付切替（未保存なら確認）
+  document.getElementById("datePick").addEventListener("change",function(){
+    if(!this.value) return;
+    if(dirty && !confirm("保存していない変更があります。移動すると失われます。よろしいですか？")){ this.value=DATE; return; }
+    suppressUnload=true; location.href="/shijisho?date="+encodeURIComponent(this.value);
+  });
 
   // ===== 初期化 =====
   renderRoster();
   renderPalette();
   if(SAVED&&SAVED.length){ SAVED.slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(addBlock); }
   refreshHints();
+  initializing=false;   // ここまでの復元は「変更」とみなさない
 </script>
 </body>
 </html>
