@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>日次 作業指示書</title>
 <style>
-  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; --dang:#e5484d; --ok:#1c8a44; }
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; --dang:#e5484d;
+          --c-setup:#2563eb; --c-teardown:#e8830c; --c-deliver:#1c8a44; --c-other:#888; }
   * { box-sizing:border-box; }
   body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
   header { background:#fff; border-bottom:1px solid var(--bd); padding:10px 16px; position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -16,65 +17,78 @@
   .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
   .btn.small { padding:6px 11px; font-size:13px; }
   input[type=date], input[type=time], input[type=text] { padding:7px 9px; border:1px solid var(--bd); border-radius:7px; font-size:13px; }
+  select { padding:7px 9px; border:1px solid var(--bd); border-radius:7px; font-size:13px; background:#fff; }
   .msg { margin:10px 16px 0; padding:9px 13px; border-radius:8px; }
   .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
   .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
-  .layout { display:grid; grid-template-columns:300px 1fr; gap:14px; padding:14px 16px; align-items:start; }
-  @media (max-width:860px){ .layout { grid-template-columns:1fr; } }
+  .layout { display:grid; grid-template-columns:290px 1fr; gap:14px; padding:14px 16px; align-items:start; }
+  @media (max-width:900px){ .layout { grid-template-columns:1fr; } }
   .pal { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px; position:sticky; top:62px; max-height:calc(100vh - 80px); overflow:auto; }
-  .pal h2 { font-size:12px; color:var(--mut); margin:12px 0 6px; letter-spacing:.04em; }
+  .pal h2 { font-size:12px; color:var(--mut); margin:12px 0 6px; }
   .pal h2:first-child { margin-top:0; }
   .cardlist { display:flex; flex-direction:column; gap:7px; }
   .chips-wrap { display:flex; flex-wrap:wrap; gap:6px; }
-  .ocard { border:1px solid var(--bd); border-left:4px solid var(--pri); border-radius:8px; padding:8px 10px; background:#fff; cursor:grab; font-size:13px; }
-  .ocard:active { cursor:grabbing; }
-  .ocard.haitatsu { border-left-color:var(--ok); }
-  .ocard .top { display:flex; gap:6px; align-items:center; margin-bottom:3px; }
+  .ocard { border:1px solid var(--bd); border-left:4px solid var(--mut); border-radius:8px; padding:7px 9px; background:#fff; cursor:grab; font-size:13px; }
+  .ocard.setup { border-left-color:var(--c-setup); }
+  .ocard.teardown { border-left-color:var(--c-teardown); }
+  .ocard.deliver { border-left-color:var(--c-deliver); }
+  .ocard .top { display:flex; gap:6px; align-items:center; margin-bottom:2px; }
   .ocard .nm { font-weight:700; }
   .ocard .meta { font-size:11px; color:var(--mut); }
-  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:700; cursor:grab; border:1px solid var(--bd); background:#f7f8fa; }
-  .pill.staff { background:#eef4ff; color:#2563eb; border-color:#cfe0ff; }
-  .pill.veh { background:#fff3e6; color:#b9610a; border-color:#f3d6ad; }
-  .pill.dept { background:#eef4ff; color:#2563eb; border:none; cursor:default; }
-  .pill.type { background:#eef0f3; color:#555; border:none; cursor:default; }
-  .pill.type.h { background:#e8f7ee; color:var(--ok); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:700; border:1px solid var(--bd); background:#f7f8fa; }
+  .pill.staff { background:#eef4ff; color:#2563eb; border-color:#cfe0ff; cursor:grab; }
+  .pill.veh { background:#fff3e6; color:#b9610a; border-color:#f3d6ad; cursor:grab; }
+  .pill.dept { background:#eef4ff; color:#2563eb; border:none; }
+  .pill.tt { color:#fff; border:none; }
+  .tt-setup { background:var(--c-setup); } .tt-teardown { background:var(--c-teardown); }
+  .tt-deliver { background:var(--c-deliver); } .tt-other { background:var(--c-other); }
   .addrow { display:flex; gap:6px; margin-top:7px; }
   .addrow input { flex:1; }
   .empty-pal { font-size:12px; color:var(--mut); padding:6px 0; }
 
-  .sheetwrap { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px 14px; min-height:300px; }
-  #sheet { display:flex; flex-direction:column; gap:10px; min-height:120px; border:2px dashed var(--bd); border-radius:10px; padding:10px; }
-  #sheet.drag { border-color:var(--pri); background:var(--pribg); }
-  #sheet .hint { color:var(--mut); text-align:center; padding:26px 10px; font-size:13px; }
-  .block { border:1px solid var(--bd); border-radius:10px; padding:10px 12px; background:#fff; }
+  .sections { display:flex; flex-direction:column; gap:14px; }
+  .section { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:10px 12px; }
+  .section > h3 { margin:0 0 8px; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .section .dot { width:12px; height:12px; border-radius:3px; display:inline-block; }
+  .dz { display:flex; flex-direction:column; gap:9px; min-height:60px; border:2px dashed var(--bd); border-radius:10px; padding:9px; }
+  .dz.drag { border-color:var(--pri); background:var(--pribg); }
+  .dz .hint { color:var(--mut); text-align:center; padding:14px 8px; font-size:12px; }
+  .block { border:1px solid var(--bd); border-left:5px solid var(--mut); border-radius:9px; padding:9px 11px; background:#fff; }
+  .block.t-setup { border-left-color:var(--c-setup); background:#f5f8ff; }
+  .block.t-teardown { border-left-color:var(--c-teardown); background:#fff8f0; }
+  .block.t-deliver { border-left-color:var(--c-deliver); background:#f3fbf5; }
+  .block.t-other { border-left-color:var(--c-other); background:#fafafa; }
   .block .bhead { display:flex; align-items:center; gap:7px; }
   .block .time { font-weight:700; }
   .block .ops { margin-left:auto; display:flex; gap:4px; }
-  .block .ops button { border:1px solid var(--bd); background:#fff; border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:13px; }
+  .block .ops button { border:1px solid var(--bd); background:#fff; border-radius:6px; width:25px; height:25px; cursor:pointer; font-size:12px; }
   .block .ops .del { color:var(--dang); border-color:#f3c0c2; }
-  .block .nm { font-size:15px; font-weight:700; margin:4px 0 1px; }
+  .block .nm { font-size:15px; font-weight:700; margin:3px 0 1px; }
   .block .place { font-size:12px; color:#444; }
-  .block .items { font-size:12px; color:var(--mut); margin-top:2px; }
-  .brow { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; align-items:center; }
-  .slot { flex:1; min-width:160px; border:1.5px dashed var(--bd); border-radius:8px; padding:6px 9px; font-size:12px; color:var(--mut); min-height:38px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .items { font-size:12px; color:#333; margin:4px 0; padding-left:2px; }
+  .items .it { padding:1px 0; }
+  .items .geday { font-weight:700; color:#000; }
+  .brow { display:flex; gap:8px; flex-wrap:wrap; margin-top:7px; align-items:center; }
+  .slot { flex:1; min-width:150px; border:1.5px dashed var(--bd); border-radius:8px; padding:5px 8px; font-size:12px; color:var(--mut); min-height:34px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .slot.over { border-color:var(--pri); background:var(--pribg); }
   .slot .lab { font-weight:700; color:#333; }
   .tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; }
-  .tag.staff { background:#eef4ff; color:#2563eb; }
-  .tag.veh { background:#fff3e6; color:#b9610a; }
+  .tag.staff { background:#eef4ff; color:#2563eb; } .tag.veh { background:#fff3e6; color:#b9610a; }
   .tag .x { cursor:pointer; font-weight:900; }
   .ph { color:#aaa; }
-  .field { display:flex; align-items:center; gap:5px; font-size:12px; color:#444; }
+  .field { display:flex; align-items:center; gap:4px; font-size:12px; color:#444; }
+  .field input[type=text].content { flex:1; min-width:160px; }
 </style>
 </head>
 <body>
 <header>
   <a class="btn ghost small" href="/">🏠 ホーム</a>
   <h1>日次 作業指示書</h1>
-  <span class="sub">受注書・配達書をドラッグして割付。担当・車も。</span>
+  <span class="sub">翌日ぶんを自動表示。カードをドラッグして割付。</span>
   <span class="spacer"></span>
   <label class="sub">対象日 <input type="date" id="datePick" value="{{ date }}"></label>
   <a class="btn ghost small" href="/shijisho/print?date={{ date }}" target="_blank">印刷 / PDF</a>
+  <a class="btn ghost small" href="/settings">⚙ 設定</a>
   <button type="button" class="btn small" id="saveBtn">保存</button>
 </header>
 
@@ -84,31 +98,28 @@
 <div class="layout">
   <!-- 手札 -->
   <div class="pal">
-    <h2>案件（{{ date }}）— ドラッグで指示書へ</h2>
+    <h2>案件（{{ date }}）— ドラッグで割付</h2>
     <div class="cardlist" id="orderCards"></div>
 
-    <h2>担当者 — ブロックの担当欄へ</h2>
+    <h2>担当者</h2>
     <div class="chips-wrap" id="staffChips"></div>
     <div class="addrow"><input type="text" id="staffAdd" placeholder="担当を追加"><button type="button" class="btn ghost small" onclick="addStaffChip()">＋</button></div>
 
-    <h2>車両 — ブロックの車欄へ</h2>
+    <h2>車両</h2>
     <div class="chips-wrap" id="vehChips"></div>
     <div class="addrow"><input type="text" id="vehAdd" placeholder="車を追加"><button type="button" class="btn ghost small" onclick="addVehChip()">＋</button></div>
   </div>
 
-  <!-- 指示書エリア -->
-  <div class="sheetwrap">
-    <form id="shForm" method="post" action="/shijisho/save">
-      <input type="hidden" name="date" value="{{ date }}">
-      <input type="hidden" name="blocks" id="blocksInput">
-      <div id="sheet"></div>
-      <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
-        <button type="button" class="btn ghost small" onclick="addBlock({})">＋ 空のブロックを追加</button>
-        <button type="submit" class="btn small" id="saveBtn2">保存</button>
-        <span class="sub">保存すると同じ日の指示書は上書きされます。</span>
-      </div>
-    </form>
-  </div>
+  <!-- 指示書（4区分） -->
+  <form id="shForm" method="post" action="/shijisho/save">
+    <input type="hidden" name="date" value="{{ date }}">
+    <input type="hidden" name="blocks" id="blocksInput">
+    <div class="sections" id="sections"></div>
+    <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+      <button type="submit" class="btn small" id="saveBtn2">保存</button>
+      <span class="sub">保存すると同じ日の指示書は上書きされます。</span>
+    </div>
+  </form>
 </div>
 
 <script>
@@ -116,182 +127,187 @@
   const SAVED = {{ blocks_json|safe }};
   const STAFF = {{ staff|tojson }};
   const VEH = {{ vehicles|tojson }};
+  const TYPES = [
+    {key:"施行", code:"setup"}, {key:"撤収", code:"teardown"},
+    {key:"配達", code:"deliver"}, {key:"その他", code:"other"}
+  ];
+  const CODE = {施行:"setup", 撤収:"teardown", 配達:"deliver", その他:"other"};
 
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function timeOf(dt){ return (dt && dt.length>=16) ? dt.slice(11,16) : ""; }
+  function yen(n){ n=parseFloat(n)||0; return "¥"+Math.round(n).toLocaleString("ja-JP"); }
+  let drag = null;
 
-  let drag = null;  // {kind, payload}
+  // ===== セクション生成 =====
+  const sectionsEl = document.getElementById("sections");
+  const dz = {};
+  TYPES.forEach(t=>{
+    const sec=document.createElement("div"); sec.className="section";
+    sec.innerHTML='<h3><span class="dot" style="background:var(--c-'+t.code+')"></span>【'+t.key+'】'+
+      '<button type="button" class="btn ghost small" style="margin-left:auto" data-add="'+t.key+'">＋ 空のブロック</button></h3>'+
+      '<div class="dz" id="dz-'+t.code+'"></div>';
+    sectionsEl.appendChild(sec);
+    const zone=sec.querySelector(".dz"); dz[t.code]=zone;
+    sec.querySelector("[data-add]").onclick=()=>addBlock({task_type:t.key});
+    zone.addEventListener("dragover", e=>{ if(drag&&drag.kind==="order"){ e.preventDefault(); zone.classList.add("drag"); } });
+    zone.addEventListener("dragleave", e=>{ if(e.target===zone) zone.classList.remove("drag"); });
+    zone.addEventListener("drop", e=>{ zone.classList.remove("drag"); if(drag&&drag.kind==="order"){ e.preventDefault(); addBlock(drag.payload); } });
+  });
 
-  // ---------- 手札の描画 ----------
+  // ===== 手札 =====
   function renderPalette(){
-    const oc = document.getElementById("orderCards");
-    if(!CARDS.length){ oc.innerHTML = '<div class="empty-pal">この日の受注書・配達書はありません。</div>'; }
-    else {
-      oc.innerHTML = "";
-      CARDS.forEach((c,i)=>{
-        const isH = c.doc_type === "配達書";
-        const el = document.createElement("div");
-        el.className = "ocard" + (isH?" haitatsu":"");
-        el.draggable = true;
-        el.innerHTML =
-          '<div class="top"><span class="pill dept">'+esc(c.department)+'</span>'+
-          '<span class="pill type'+(isH?" h":"")+'">'+(isH?'配達':'施行')+'</span>'+
+    const oc=document.getElementById("orderCards");
+    if(!CARDS.length){ oc.innerHTML='<div class="empty-pal">この日の受注書・配達書はありません。</div>'; }
+    else { oc.innerHTML="";
+      CARDS.forEach(c=>{
+        const code=CODE[c.task_type]||"other";
+        const el=document.createElement("div"); el.className="ocard "+code; el.draggable=true;
+        el.innerHTML='<div class="top"><span class="pill tt tt-'+code+'">'+esc(c.task_type)+'</span>'+
+          '<span class="pill dept">'+esc(c.department)+'</span>'+
           '<span class="meta">'+esc(timeOf(c.datetime)||'時刻未定')+'</span></div>'+
-          '<div class="nm">'+esc(c.souke_or_customer||'（名義なし）')+(isH?'':'　家')+'</div>'+
-          (c.place?'<div class="meta">'+esc(c.place)+'</div>':'')+
+          '<div class="nm">'+esc(c.souke_or_customer||'（名義なし）')+'</div>'+
           (c.items_summary?'<div class="meta">'+esc(c.items_summary)+'</div>':'');
-        el.addEventListener("dragstart", ()=>{ drag = {kind:"order", payload:c}; });
-        el.addEventListener("dragend", ()=>{ drag = null; });
+        el.addEventListener("dragstart", ()=>{ drag={kind:"order", payload:c}; });
+        el.addEventListener("dragend", ()=>{ drag=null; });
         oc.appendChild(el);
       });
     }
     renderChips("staffChips", STAFF, "staff");
     renderChips("vehChips", VEH, "veh");
   }
-  function renderChips(id, list, kind){
-    const box = document.getElementById(id);
-    box.innerHTML = "";
-    list.forEach(name=>box.appendChild(makePill(name, kind)));
-  }
-  function makePill(name, kind){
-    const p = document.createElement("span");
-    p.className = "pill "+kind;
-    p.textContent = name;
-    p.draggable = true;
-    p.addEventListener("dragstart", ()=>{ drag = {kind:(kind==="staff"?"staff":"vehicle"), payload:{name}}; });
-    p.addEventListener("dragend", ()=>{ drag = null; });
-    return p;
-  }
-  function addStaffChip(){ const i=document.getElementById("staffAdd"); const v=i.value.trim(); if(!v)return; if(!STAFF.includes(v))STAFF.push(v); renderChips("staffChips",STAFF,"staff"); i.value=""; }
-  function addVehChip(){ const i=document.getElementById("vehAdd"); const v=i.value.trim(); if(!v)return; if(!VEH.includes(v))VEH.push(v); renderChips("vehChips",VEH,"veh"); i.value=""; }
+  function renderChips(id,list,kind){ const b=document.getElementById(id); b.innerHTML=""; list.forEach(n=>b.appendChild(makePill(n,kind))); }
+  function makePill(name,kind){ const p=document.createElement("span"); p.className="pill "+kind; p.textContent=name; p.draggable=true;
+    p.addEventListener("dragstart",()=>{ drag={kind:(kind==="staff"?"staff":"vehicle"), payload:{name}}; });
+    p.addEventListener("dragend",()=>{ drag=null; }); return p; }
+  function addStaffChip(){ const i=document.getElementById("staffAdd"),v=i.value.trim(); if(!v)return; if(!STAFF.includes(v))STAFF.push(v); renderChips("staffChips",STAFF,"staff"); i.value=""; }
+  function addVehChip(){ const i=document.getElementById("vehAdd"),v=i.value.trim(); if(!v)return; if(!VEH.includes(v))VEH.push(v); renderChips("vehChips",VEH,"veh"); i.value=""; }
 
-  // ---------- ブロック ----------
-  const sheet = document.getElementById("sheet");
-  function refreshHint(){
-    if(!sheet.querySelector(".block")){
-      sheet.innerHTML = '<div class="hint">← 左の案件カードをここにドラッグすると指示が作られます。<br>「空のブロックを追加」でも作れます。</div>';
-    } else { const h=sheet.querySelector(".hint"); if(h)h.remove(); }
+  // ===== ブロック =====
+  function itemsHTML(items){
+    if(!items||!items.length) return "";
+    let h='<div class="items">';
+    items.forEach(it=>{
+      const isAlt = it.category==="祭壇";
+      h+='<div class="it'+(isAlt?' geday':'')+'">'+esc(it.category)+
+         (it.product?' '+esc(it.product):'')+' ×'+(it.qty||0)+
+         (isAlt?'　下代'+yen(it.price):'')+'</div>';
+    });
+    return h+'</div>';
+  }
+  function refreshHints(){
+    TYPES.forEach(t=>{ const z=dz[t.code];
+      if(!z.querySelector(".block")){ if(!z.querySelector(".hint")) z.innerHTML='<div class="hint">'+(t.key==="その他"?'「＋ 空のブロック」で自由に追加':'カードをここへドラッグ')+'</div>'; }
+      else { const h=z.querySelector(".hint"); if(h)h.remove(); }
+    });
   }
   function addBlock(d){
-    d = d || {};
-    const h=sheet.querySelector(".hint"); if(h)h.remove();
-    const b = document.createElement("div");
-    b.className = "block";
-    b._data = {
-      order_page_id: d.order_page_id||"", department: d.department||"", doc_type: d.doc_type||"",
-      souke_or_customer: d.souke_or_customer||"", datetime: d.datetime||"", place: d.place||"",
-      items_summary: d.items_summary||""
-    };
-    const isH = b._data.doc_type === "配達書";
-    b.innerHTML =
-      '<div class="bhead">'+
-        (b._data.department?'<span class="pill dept">'+esc(b._data.department)+'</span>':'')+
-        (b._data.doc_type?'<span class="pill type'+(isH?" h":"")+'">'+(isH?'配達':'施行')+'</span>':'')+
-        '<span class="time">'+esc(timeOf(b._data.datetime)||'')+'</span>'+
-        '<span class="ops"><button type="button" class="up" title="上へ">↑</button>'+
-        '<button type="button" class="down" title="下へ">↓</button>'+
-        '<button type="button" class="del" title="削除">×</button></span>'+
-      '</div>'+
-      '<div class="nm" contenteditable="true">'+esc(b._data.souke_or_customer||'（名義なし）')+'</div>'+
-      '<div class="place" contenteditable="true">'+esc(b._data.place||'')+'</div>'+
-      '<div class="items" contenteditable="true">'+esc(b._data.items_summary||'')+'</div>'+
-      '<div class="brow">'+
-        '<div class="slot staff-slot"><span class="lab">担当</span><span class="chips"></span><span class="ph">ここに担当をドロップ</span></div>'+
-        '<div class="slot veh-slot"><span class="lab">車</span><span class="veh"></span><span class="ph">ここに車をドロップ</span></div>'+
-      '</div>'+
-      '<div class="brow">'+
-        '<span class="field">出発 <input type="time" class="depart"></span>'+
-        '<span class="field" style="flex:1;">メモ <input type="text" class="memo" style="flex:1;"></span>'+
+    d=d||{}; const type=d.task_type||"その他"; const code=CODE[type]||"other"; const zone=dz[code];
+    const h=zone.querySelector(".hint"); if(h)h.remove();
+    const b=document.createElement("div"); b.className="block t-"+code;
+    b._data={ task_type:type, order_page_id:d.order_page_id||"", department:d.department||"",
+      souke_or_customer:d.souke_or_customer||"", datetime:d.datetime||"", place:d.place||"",
+      purpose:d.purpose||"", items:d.items||[] };
+    const isOther=type==="その他", isTear=type==="撤収", isSetup=type==="施行", isDel=type==="配達";
+    let html='<div class="bhead">'+
+      '<span class="pill tt tt-'+code+'">'+esc(type)+'</span>'+
+      (b._data.department?'<span class="pill dept">'+esc(b._data.department)+'</span>':'')+
+      '<span class="time">'+esc(timeOf(b._data.datetime)||'')+'</span>'+
+      '<span class="ops"><button type="button" class="up">↑</button><button type="button" class="down">↓</button><button type="button" class="del">×</button></span>'+
       '</div>';
+    if(isOther){
+      html+='<div class="brow"><span class="field" style="flex:1;">内容 <input type="text" class="content" placeholder="作業内容"></span></div>';
+    } else {
+      html+='<div class="nm" contenteditable="true">'+esc(b._data.souke_or_customer||'（名義なし）')+'</div>'+
+        (b._data.purpose?'<div class="place">用途：'+esc(b._data.purpose)+'</div>':'')+
+        '<div class="place" contenteditable="true">'+esc(b._data.place||'')+'</div>'+
+        itemsHTML(b._data.items);
+    }
+    // 時間・高速
+    html+='<div class="brow">';
+    if(isDel||isSetup||isTear||isOther) html+='<span class="field">出発 <input type="time" class="depart"></span>';
+    if(isSetup||isTear) html+='<span class="field">着 <input type="time" class="arrive"></span>';
+    if(isTear) html+='<span class="field">開式 <input type="time" class="kaishiki"></span>';
+    if(isSetup||isTear) html+='<span class="field">高速 <select class="highway"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
+    html+='</div>';
+    // 担当・車
+    html+='<div class="brow">'+
+      '<div class="slot staff-slot"><span class="lab">担当</span><span class="chips"></span><span class="ph">担当をドロップ</span></div>'+
+      '<div class="slot veh-slot"><span class="lab">車</span><span class="veh"></span><span class="ph">車をドロップ</span></div>'+
+      '</div>'+
+      '<div class="brow"><span class="field" style="flex:1;">メモ <input type="text" class="memo" style="flex:1;"></span></div>';
+    b.innerHTML=html;
 
-    // ops
-    b.querySelector(".del").onclick = ()=>{ b.remove(); refreshHint(); };
-    b.querySelector(".up").onclick = ()=>{ const p=b.previousElementSibling; if(p)sheet.insertBefore(b,p); };
-    b.querySelector(".down").onclick = ()=>{ const n=b.nextElementSibling; if(n)sheet.insertBefore(n,b); };
+    b.querySelector(".del").onclick=()=>{ b.remove(); refreshHints(); };
+    b.querySelector(".up").onclick=()=>{ const p=b.previousElementSibling; if(p)zone.insertBefore(b,p); };
+    b.querySelector(".down").onclick=()=>{ const n=b.nextElementSibling; if(n)zone.insertBefore(n,b); };
 
-    // staff slot
-    const sslot = b.querySelector(".staff-slot");
-    sslot.addEventListener("dragover", e=>{ if(drag&&drag.kind==="staff"){ e.preventDefault(); sslot.classList.add("over"); } });
-    sslot.addEventListener("dragleave", ()=>sslot.classList.remove("over"));
-    sslot.addEventListener("drop", e=>{ e.preventDefault(); sslot.classList.remove("over"); if(drag&&drag.kind==="staff") assignStaff(b, drag.payload.name); });
-    // vehicle slot
-    const vslot = b.querySelector(".veh-slot");
-    vslot.addEventListener("dragover", e=>{ if(drag&&drag.kind==="vehicle"){ e.preventDefault(); vslot.classList.add("over"); } });
-    vslot.addEventListener("dragleave", ()=>vslot.classList.remove("over"));
-    vslot.addEventListener("drop", e=>{ e.preventDefault(); vslot.classList.remove("over"); if(drag&&drag.kind==="vehicle") assignVehicle(b, drag.payload.name); });
+    const sslot=b.querySelector(".staff-slot");
+    sslot.addEventListener("dragover",e=>{ if(drag&&drag.kind==="staff"){ e.preventDefault(); sslot.classList.add("over"); } });
+    sslot.addEventListener("dragleave",()=>sslot.classList.remove("over"));
+    sslot.addEventListener("drop",e=>{ e.preventDefault(); sslot.classList.remove("over"); if(drag&&drag.kind==="staff") assignStaff(b,drag.payload.name); });
+    const vslot=b.querySelector(".veh-slot");
+    vslot.addEventListener("dragover",e=>{ if(drag&&drag.kind==="vehicle"){ e.preventDefault(); vslot.classList.add("over"); } });
+    vslot.addEventListener("dragleave",()=>vslot.classList.remove("over"));
+    vslot.addEventListener("drop",e=>{ e.preventDefault(); vslot.classList.remove("over"); if(drag&&drag.kind==="vehicle") assignVehicle(b,drag.payload.name); });
 
-    // restore values
+    // 復元
+    if(isOther && d.content) b.querySelector(".content").value=d.content;
     (d.staff||[]).forEach(n=>assignStaff(b,n));
-    if(d.vehicle) assignVehicle(b, d.vehicle);
-    if(d.depart_time) b.querySelector(".depart").value = d.depart_time;
-    if(d.memo) b.querySelector(".memo").value = d.memo;
+    if(d.vehicle) assignVehicle(b,d.vehicle);
+    if(d.depart_time && b.querySelector(".depart")) b.querySelector(".depart").value=d.depart_time;
+    if(d.arrive_time && b.querySelector(".arrive")) b.querySelector(".arrive").value=d.arrive_time;
+    if(d.kaishiki_time && b.querySelector(".kaishiki")) b.querySelector(".kaishiki").value=d.kaishiki_time;
+    if(d.highway && b.querySelector(".highway")) b.querySelector(".highway").value=d.highway;
+    if(d.memo) b.querySelector(".memo").value=d.memo;
 
-    sheet.appendChild(b);
+    zone.appendChild(b);
     return b;
   }
-  function assignStaff(block, name){
-    if(!name) return;
-    const chips = block.querySelector(".staff-slot .chips");
-    if([...chips.querySelectorAll(".tag")].some(t=>t.dataset.name===name)) return;
+  function assignStaff(block,name){ if(!name)return; const chips=block.querySelector(".staff-slot .chips");
+    if([...chips.querySelectorAll(".tag")].some(t=>t.dataset.name===name))return;
     block.querySelector(".staff-slot .ph").style.display="none";
-    const t=document.createElement("span"); t.className="tag staff"; t.dataset.name=name;
-    t.innerHTML = esc(name)+' <span class="x">×</span>';
+    const t=document.createElement("span"); t.className="tag staff"; t.dataset.name=name; t.innerHTML=esc(name)+' <span class="x">×</span>';
     t.querySelector(".x").onclick=()=>{ t.remove(); if(!chips.querySelector(".tag")) block.querySelector(".staff-slot .ph").style.display=""; };
-    chips.appendChild(t);
-  }
-  function assignVehicle(block, name){
-    const v = block.querySelector(".veh-slot .veh");
-    block.querySelector(".veh-slot .ph").style.display = name?"none":"";
-    v.innerHTML = name ? ('<span class="tag veh" data-name="'+esc(name)+'">'+esc(name)+' <span class="x">×</span></span>') : "";
-    if(name) v.querySelector(".x").onclick=()=>{ assignVehicle(block,""); };
-  }
+    chips.appendChild(t); }
+  function assignVehicle(block,name){ const v=block.querySelector(".veh-slot .veh");
+    block.querySelector(".veh-slot .ph").style.display=name?"none":"";
+    v.innerHTML=name?('<span class="tag veh" data-name="'+esc(name)+'">'+esc(name)+' <span class="x">×</span></span>'):"";
+    if(name) v.querySelector(".x").onclick=()=>{ assignVehicle(block,""); }; }
 
-  // sheet drop (案件カード→新ブロック)
-  sheet.addEventListener("dragover", e=>{ if(drag&&drag.kind==="order"){ e.preventDefault(); sheet.classList.add("drag"); } });
-  sheet.addEventListener("dragleave", e=>{ if(e.target===sheet) sheet.classList.remove("drag"); });
-  sheet.addEventListener("drop", e=>{ sheet.classList.remove("drag"); if(drag&&drag.kind==="order"){ e.preventDefault(); addBlock(drag.payload); } });
-
-  // ---------- 保存 ----------
+  // ===== 保存 =====
   function collect(){
     const out=[];
-    sheet.querySelectorAll(".block").forEach((b,idx)=>{
-      const staff=[...b.querySelectorAll(".staff-slot .tag")].map(t=>t.dataset.name);
-      const vehEl=b.querySelector(".veh-slot .tag");
-      out.push({
-        order_page_id: b._data.order_page_id||"",
-        department: b._data.department||"",
-        doc_type: b._data.doc_type||"",
-        souke_or_customer: (b.querySelector(".nm").textContent||"").trim(),
-        datetime: b._data.datetime||"",
-        place: (b.querySelector(".place").textContent||"").trim(),
-        items_summary: (b.querySelector(".items").textContent||"").trim(),
-        staff: staff,
-        vehicle: vehEl?vehEl.dataset.name:"",
-        depart_time: b.querySelector(".depart").value||"",
-        memo: b.querySelector(".memo").value||"",
-        order: idx
+    TYPES.forEach(t=>{
+      dz[t.code].querySelectorAll(".block").forEach((b,idx)=>{
+        const staff=[...b.querySelectorAll(".staff-slot .tag")].map(x=>x.dataset.name);
+        const vehEl=b.querySelector(".veh-slot .tag");
+        const g=cls=>{ const el=b.querySelector("."+cls); return el?el.value:""; };
+        const isOther=t.key==="その他";
+        out.push({
+          task_type:t.key,
+          order_page_id:b._data.order_page_id||"", department:b._data.department||"",
+          souke_or_customer:isOther?"":((b.querySelector(".nm")?.textContent||"").trim()),
+          datetime:b._data.datetime||"", purpose:b._data.purpose||"",
+          place:isOther?"":((b.querySelector(".place[contenteditable]")?.textContent||"").trim()),
+          items:b._data.items||[],
+          content:isOther?g("content"):"",
+          depart_time:g("depart"), arrive_time:g("arrive"), kaishiki_time:g("kaishiki"),
+          highway:g("highway"), staff:staff, vehicle:vehEl?vehEl.dataset.name:"",
+          memo:g("memo"), order:idx
+        });
       });
     });
     return out;
   }
-  function doSave(){
-    document.getElementById("blocksInput").value = JSON.stringify(collect());
-    document.getElementById("shForm").submit();
-  }
-  document.getElementById("saveBtn").onclick = doSave;
-  document.getElementById("shForm").addEventListener("submit", e=>{
-    document.getElementById("blocksInput").value = JSON.stringify(collect());
-  });
+  function doSave(){ document.getElementById("blocksInput").value=JSON.stringify(collect()); document.getElementById("shForm").submit(); }
+  document.getElementById("saveBtn").onclick=doSave;
+  document.getElementById("shForm").addEventListener("submit",()=>{ document.getElementById("blocksInput").value=JSON.stringify(collect()); });
+  document.getElementById("datePick").addEventListener("change",function(){ if(this.value) location.href="/shijisho?date="+encodeURIComponent(this.value); });
 
-  // 日付切替
-  document.getElementById("datePick").addEventListener("change", function(){
-    if(this.value) location.href = "/shijisho?date=" + encodeURIComponent(this.value);
-  });
-
-  // ---------- 初期化 ----------
+  // ===== 初期化 =====
   renderPalette();
-  if(SAVED && SAVED.length){ SAVED.slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(addBlock); }
-  refreshHint();
+  if(SAVED&&SAVED.length){ SAVED.slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(addBlock); }
+  refreshHints();
 </script>
 </body>
 </html>

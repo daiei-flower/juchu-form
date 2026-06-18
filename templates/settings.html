@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設定（担当・車・式場・得意先）</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --dang:#e5484d; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; display:flex; align-items:center; gap:10px; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:920px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:9px 15px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .btn.del { background:transparent; color:var(--dang); border:none; cursor:pointer; font-size:16px; padding:0 6px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  @media (max-width:760px){ .grid { grid-template-columns:1fr; } }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:14px 16px; }
+  .panel h2 { font-size:15px; margin:0 0 4px; }
+  .panel .note { font-size:12px; color:var(--mut); margin:0 0 10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:10px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; background:#f3f5f8; border:1px solid var(--bd); border-radius:999px; padding:4px 6px 4px 11px; font-size:13px; }
+  .chip .d { color:var(--mut); font-size:11px; }
+  .chip form { margin:0; display:inline; }
+  .addrow { display:flex; gap:7px; flex-wrap:wrap; }
+  .addrow input, .addrow select { padding:8px 9px; border:1px solid var(--bd); border-radius:8px; font-size:13px; }
+  .addrow input.name { flex:1; min-width:120px; }
+  .empty { color:var(--mut); font-size:13px; padding:6px 0; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+</style>
+</head>
+<body>
+<header>
+  <a class="btn ghost small" href="/">🏠 ホーム</a>
+  <h1>設定</h1>
+  <span class="sub">担当・車・式場・得意先のカード名を管理（指示書と受注書フォームに反映）</span>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="msg ng">{{ err }}</div>{% endif %}
+
+  <div class="grid">
+    {% for t in types %}
+    <div class="panel">
+      <h2>{{ t }}</h2>
+      <p class="note">
+        {% if t == '担当' %}指示書の担当カードになります。
+        {% elif t == '車両' %}指示書の車カードになります。
+        {% elif t == '式場' %}受注書フォームの「式場・住所」候補になります。
+        {% else %}受注書フォームの「得意先」候補（部門別）になります。
+        {% endif %}
+      </p>
+
+      {% set rows = grouped.get(t, []) %}
+      {% if rows %}
+      <div class="chips">
+        {% for r in rows %}
+        <span class="chip">
+          {{ r.name }}{% if t == '得意先' and r.dept %}<span class="d">／{{ r.dept }}</span>{% endif %}
+          <form method="post" action="/settings/delete" onsubmit="return confirm('「{{ r.name }}」を削除しますか？');">
+            <input type="hidden" name="page_id" value="{{ r.id }}">
+            <button type="submit" class="btn del" title="削除">×</button>
+          </form>
+        </span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">まだありません。下で追加してください。</div>
+      {% endif %}
+
+      <form method="post" action="/settings/add" class="addrow">
+        <input type="hidden" name="type" value="{{ t }}">
+        <input type="text" name="name" class="name" placeholder="{{ t }}名を入力" required>
+        {% if t == '得意先' %}
+        <select name="department">
+          {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <button type="submit" class="btn small">＋ 追加</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+</body>
+</html>

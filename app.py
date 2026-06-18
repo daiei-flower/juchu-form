@@ -52,6 +52,9 @@ SEIKA_DB = _CFG.get("seika_cost", "")
 SHIJISHO_DB = _CFG.get("shijisho", "")
 STAFF = _CFG.get("staff", [])
 VEHICLES = _CFG.get("vehicles", [])
+MASTERS_DB = _CFG.get("masters", "")
+# フォーム設定(マスタ)DBのプロパティ名
+MS = {"title": "名前", "type": "種別", "dept": "部門", "order": "並び"}
 # 日次作業指示書DBのプロパティ名（本体 382d8bdf... と一致）
 SHJ = {"title": "指示日", "date": "対象日", "blocks": "ブロックJSON", "editor": "更新者"}
 TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -516,16 +519,95 @@ def _select_options(db_id, prop_name):
         return []
 
 
+_MASTERS_CACHE = {}
+
+
+def load_masters(force=False):
+    """フォーム設定DBを読み {staff, vehicles, venues, customers:{dept:[...]}} を返す（簡易キャッシュ）。"""
+    if _MASTERS_CACHE and not force:
+        return _MASTERS_CACHE
+    out = {"staff": [], "vehicles": [], "venues": [], "customers": {}}
+    if not (TOKEN and MASTERS_DB):
+        return out
+    rows = []
+    with httpx.Client(timeout=30) as client:
+        cursor = None
+        while True:
+            body = {"page_size": 100, "sorts": [{"property": MS["order"], "direction": "ascending"}]}
+            if cursor:
+                body["start_cursor"] = cursor
+            r = client.post(f"{API}/databases/{MASTERS_DB}/query", headers=_headers(), json=body)
+            if r.status_code != 200:
+                break
+            j = r.json()
+            rows.extend(j.get("results", []))
+            if not j.get("has_more"):
+                break
+            cursor = j.get("next_cursor")
+    for it in rows:
+        p = it.get("properties", {})
+        name = (_pget(p, MS["title"]) or "").strip()
+        typ = _pget(p, MS["type"])
+        if not name:
+            continue
+        if typ == "担当":
+            out["staff"].append(name)
+        elif typ == "車両":
+            out["vehicles"].append(name)
+        elif typ == "式場":
+            out["venues"].append(name)
+        elif typ == "得意先":
+            d = _pget(p, MS["dept"]) or ""
+            out["customers"].setdefault(d, []).append(name)
+    _MASTERS_CACHE.clear()
+    _MASTERS_CACHE.update(out)
+    return out
+
+
+def _masters_rows():
+    """設定ページ用：全マスタ行を (page_id, 種別, 名前, 部門) で返す。"""
+    rows = []
+    if not (TOKEN and MASTERS_DB):
+        return rows
+    with httpx.Client(timeout=30) as client:
+        cursor = None
+        while True:
+            body = {"page_size": 100}
+            if cursor:
+                body["start_cursor"] = cursor
+            r = client.post(f"{API}/databases/{MASTERS_DB}/query", headers=_headers(), json=body)
+            if r.status_code != 200:
+                break
+            j = r.json()
+            for it in j.get("results", []):
+                p = it.get("properties", {})
+                rows.append({"id": it["id"], "type": _pget(p, MS["type"]),
+                             "name": _pget(p, MS["title"]), "dept": _pget(p, MS["dept"])})
+            if not j.get("has_more"):
+                break
+            cursor = j.get("next_cursor")
+    return rows
+
+
 def _candidates(department):
-    """部門の得意先候補＝固定リスト ∪ Notion現存オプション。"""
+    """部門の得意先候補＝固定リスト ∪ 設定(マスタ) ∪ Notion現存オプション。"""
     src = SOURCES.get(department, {})
     out = list(src.get("customers", []))
     seen = set(out)
+    for name in load_masters().get("customers", {}).get(department, []):
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
     for name in _select_options(src.get("order_header"), H["customer"]):
         if name and name not in seen:
             seen.add(name)
             out.append(name)
     return out
+
+
+def _venues():
+    """式場候補（設定マスタから）。"""
+    return load_masters().get("venues", [])
 
 
 @app.get("/healthz")
@@ -568,7 +650,7 @@ def form(request: Request, department: str = "", msg: str = "", err: str = "",
     return templates.TemplateResponse("form.html", {
         "request": request, "departments": depts, "department": department,
         "dept_customers": dept_customers, "categories": CATEGORIES,
-        "delivery_categories": DELIVERY_CATEGORIES,
+        "delivery_categories": DELIVERY_CATEGORIES, "venues": _venues(),
         "today": datetime.now().strftime("%Y-%m-%d"), "msg": msg, "err": err,
         "edit_mode": False, "form_action": "/create", "h": {}, "init_lines": [],
     })
@@ -672,6 +754,7 @@ def order_edit(request: Request, page_id: str, err: str = "", _u: str = Depends(
         "request": request, "departments": depts, "department": dept,
         "dept_customers": {d: _candidates(d) for d in depts},
         "categories": CATEGORIES, "delivery_categories": DELIVERY_CATEGORIES,
+        "venues": _venues(),
         "today": datetime.now().strftime("%Y-%m-%d"), "msg": "", "err": err,
         "edit_mode": True, "form_action": f"/update/{page_id}",
         "h": h, "init_lines": init_lines,
@@ -1041,36 +1124,38 @@ def _rich_chunks(s):
     return {"rich_text": [{"text": {"content": p}} for p in parts]}
 
 
-def _order_summary(client, dept, page_id, doc_type):
-    """受注書/配達書の明細をカテゴリ別本数に集約（例『祭壇1・供花12・花束2』）。"""
+def _order_items(client, dept, page_id):
+    """受注書/配達書の明細を配列で返す（カテゴリ・商品名・本数・受注額=下代）＋サマリ文字列。"""
     ldb = SOURCES.get(dept, {}).get("order_line")
+    items, agg, order = [], {}, []
     if not ldb:
-        return ""
+        return items, ""
     rq = client.post(f"{API}/databases/{ldb}/query", headers=_headers(),
                      json={"filter": {"property": L["rel"], "relation": {"contains": page_id}},
                            "page_size": 100})
     if rq.status_code != 200:
-        return ""
-    agg = {}
-    order = []
+        return items, ""
     for it in rq.json().get("results", []):
         lp = it.get("properties", {})
         cat = (_pget(lp, L["category"]) or "その他").strip()
         qty = _num(_pget(lp, L["qty"])) or 0
+        items.append({"category": cat, "product": _pget(lp, L["product"]) or "",
+                      "qty": int(qty), "price": _num(_pget(lp, L["unit_price"]))})
         if cat not in agg:
             agg[cat] = 0
             order.append(cat)
         agg[cat] += qty
-    return "・".join(f"{c}{int(agg[c])}" for c in order if agg[c])
+    summary = "・".join(f"{c}{int(agg[c])}" for c in order if agg[c])
+    return items, summary
 
 
-def day_orders(target_date):
-    """指定日(YYYY-MM-DD)の全部門の受注書・配達書を手札用カードにして返す。
-    施行=施行予定日、配達=配達日時 が当日のものを集める（受注書DBは読むだけ）。"""
+def day_tasks(target_date):
+    """指定日の全部門の作業を 施行/撤収/配達 のカードにして返す（受注書DBは読むだけ）。
+    施行=施行予定日, 撤収=撤収予定日, 配達=配達日時 が当日のもの。1受注書が施行と撤収の両方に出ることあり。"""
     if not TOKEN:
         return []
     cards = []
-    with httpx.Client(timeout=60) as client:
+    with httpx.Client(timeout=90) as client:
         for dept in SOURCES:
             hdb = SOURCES.get(dept, {}).get("order_header")
             if not hdb:
@@ -1083,21 +1168,34 @@ def day_orders(target_date):
             for it in r.json().get("results", []):
                 hp = it.get("properties", {})
                 doc = _pget(hp, H["doc_type"]) or "施行受注書"
-                is_h = doc == "配達書"
-                basis = _pget(hp, H["delivery_at"]) if is_h else _pget(hp, H["service_date"])
-                if not basis or basis[:10] != target_date:
+                pid = it["id"]
+                if doc == "配達書":
+                    if (_pget(hp, H["delivery_at"]) or "")[:10] != target_date:
+                        continue
+                    items, summary = _order_items(client, dept, pid)
+                    cards.append({"task_type": "配達", "order_page_id": pid, "department": dept,
+                                  "souke_or_customer": _pget(hp, H["customer"]) or "",
+                                  "datetime": _pget(hp, H["delivery_at"]) or "",
+                                  "place": _pget(hp, H["deliver_address"]) or "",
+                                  "purpose": _pget(hp, H["purpose"]) or "",
+                                  "items": items, "items_summary": summary})
                     continue
-                cards.append({
-                    "order_page_id": it["id"],
-                    "department": dept,
-                    "doc_type": doc,
-                    "souke_or_customer": (_pget(hp, H["customer"]) if is_h else _pget(hp, H["souke"])) or "",
-                    "datetime": basis or "",
-                    "place": (_pget(hp, H["deliver_address"]) if is_h else _pget(hp, H["venue"])) or "",
-                    "items_summary": _order_summary(client, dept, it["id"], doc),
-                })
-    # 時刻順（時刻なしは後ろ）
-    cards.sort(key=lambda c: (len(c["datetime"]) < 16, c["datetime"]))
+                # 施行受注書 → 施行 / 撤収 を別々に判定
+                svc = (_pget(hp, H["service_date"]) or "")
+                tear = (_pget(hp, H["teardown_date"]) or "")
+                if svc[:10] != target_date and tear[:10] != target_date:
+                    continue
+                items, summary = _order_items(client, dept, pid)
+                base = {"order_page_id": pid, "department": dept,
+                        "souke_or_customer": _pget(hp, H["souke"]) or "",
+                        "place": _pget(hp, H["venue"]) or "",
+                        "items": items, "items_summary": summary}
+                if svc[:10] == target_date:
+                    cards.append({**base, "task_type": "施行", "datetime": svc})
+                if tear[:10] == target_date:
+                    cards.append({**base, "task_type": "撤収", "datetime": tear})
+    order_rank = {"施行": 0, "撤収": 1, "配達": 2}
+    cards.sort(key=lambda c: (order_rank.get(c["task_type"], 9), len(c["datetime"]) < 16, c["datetime"]))
     return cards
 
 
@@ -1155,16 +1253,20 @@ def save_shijisho(target_date, blocks, editor=""):
 @app.get("/shijisho", response_class=HTMLResponse)
 def shijisho_builder(request: Request, date: str = "", msg: str = "", err: str = "",
                      _u: str = Depends(auth)):
-    from datetime import datetime
+    from datetime import datetime, timedelta
     if not (len(date) == 10 and date[4] == "-" and date[7] == "-"):
-        date = datetime.now().strftime("%Y-%m-%d")
-    cards = day_orders(date)
+        # 基本は翌日ぶんを作るので既定＝翌日
+        date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    cards = day_tasks(date)
     blocks = read_shijisho(date)
+    m = load_masters()
+    staff = m["staff"] or STAFF
+    vehicles = m["vehicles"] or VEHICLES
     return templates.TemplateResponse("shijisho.html", {
         "request": request, "date": date, "cards": cards, "blocks": blocks,
         "blocks_json": json.dumps(blocks, ensure_ascii=False),
         "cards_json": json.dumps(cards, ensure_ascii=False),
-        "staff": STAFF, "vehicles": VEHICLES, "msg": msg, "err": err})
+        "staff": staff, "vehicles": vehicles, "msg": msg, "err": err})
 
 
 @app.post("/shijisho/save")
@@ -1185,12 +1287,73 @@ async def shijisho_save(request: Request, _u: str = Depends(auth), _c: None = De
 
 @app.get("/shijisho/print", response_class=HTMLResponse)
 def shijisho_print(request: Request, date: str = "", _u: str = Depends(auth)):
-    from datetime import datetime
+    from datetime import datetime, timedelta
     if not (len(date) == 10 and date[4] == "-"):
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     return templates.TemplateResponse("shijisho_print.html", {
         "request": request, "date": date, "blocks": read_shijisho(date),
         "company_name": COMPANY})
+
+
+# ───────────────────────── 設定（マスタ：担当・車・式場・得意先） ─────────────────────────
+MASTER_TYPES = ["担当", "車両", "式場", "得意先"]
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, msg: str = "", err: str = "", _u: str = Depends(auth)):
+    rows = _masters_rows()
+    grouped = {t: [] for t in MASTER_TYPES}
+    for r in rows:
+        grouped.setdefault(r["type"] or "", []).append(r)
+    for t in grouped:
+        grouped[t].sort(key=lambda r: ((r["dept"] or ""), (r["name"] or "")))
+    return templates.TemplateResponse("settings.html", {
+        "request": request, "grouped": grouped, "types": MASTER_TYPES,
+        "departments": list(SOURCES.keys()), "msg": msg, "err": err})
+
+
+@app.post("/settings/add")
+async def settings_add(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    typ = (f.get("type") or "").strip()
+    name = (f.get("name") or "").strip()
+    dept = (f.get("department") or "").strip()
+    try:
+        if not (typ in MASTER_TYPES and name):
+            raise RuntimeError("種別と名前を入力してください")
+        if not (TOKEN and MASTERS_DB):
+            raise RuntimeError("設定DBが未設定です")
+        props = {MS["title"]: _title(name), MS["type"]: _select(typ)}
+        if typ == "得意先" and dept:
+            props[MS["dept"]] = _select(dept)
+        with httpx.Client(timeout=30) as client:
+            r = client.post(f"{API}/pages", headers=_headers(),
+                            json={"parent": {"database_id": MASTERS_DB}, "properties": props})
+            if r.status_code != 200:
+                raise RuntimeError(f"追加に失敗 {r.status_code}: {r.text[:200]}")
+        _MASTERS_CACHE.clear()
+        return RedirectResponse(f"/settings?msg={quote(f'{typ}「{name}」を追加しました')}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/settings?err={quote(str(e))}", status_code=303)
+
+
+@app.post("/settings/delete")
+async def settings_delete(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    pid = f.get("page_id") or ""
+    try:
+        with httpx.Client(timeout=30) as client:
+            r = client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+            if r.status_code != 200:
+                raise RuntimeError(f"削除に失敗 {r.status_code}")
+        _MASTERS_CACHE.clear()
+        return RedirectResponse(f"/settings?msg={quote('削除しました')}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/settings?err={quote(str(e))}", status_code=303)
 
 
 def _fmt_money(v):

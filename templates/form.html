@@ -155,7 +155,9 @@
         <input type="text" name="customer" id="f_customer" class="nav" list="cust_list" placeholder="一覧から選択 or 入力（新規もOK）" value="{{ h.customer or '' }}">
         <datalist id="cust_list"></datalist></div>
 
-      <div class="ofield shikou-only"><label>式場・住所</label><input type="text" name="venue" id="f_venue" class="nav" value="{{ h.venue or '' }}"></div>
+      <div class="ofield shikou-only"><label>式場・住所</label>
+        <input type="text" name="venue" id="f_venue" class="nav" list="venue_list" value="{{ h.venue or '' }}">
+        <datalist id="venue_list">{% for v in venues %}<option value="{{ v }}">{% endfor %}</datalist></div>
       <div class="ofield delivery-only"><label>届け先住所</label><input type="text" name="deliver_address" id="f_daddr" class="nav" autocomplete="off" value="{{ h.deliver_address or '' }}"></div>
       <div class="ofield delivery-only"><label>届け先電話</label><input type="text" name="deliver_phone" id="f_dtel" class="nav" inputmode="tel" autocomplete="off" value="{{ h.deliver_phone or '' }}"></div>
 

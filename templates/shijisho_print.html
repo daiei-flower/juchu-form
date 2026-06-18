@@ -7,30 +7,37 @@
 <style>
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing:border-box; }
-  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#eef0f2; color:#111; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#eef0f2; color:#111;
+         --c-setup:#2563eb; --c-teardown:#e8830c; --c-deliver:#1c8a44; --c-other:#888; }
   .toolbar { padding:10px 16px; background:#fff; border-bottom:1px solid #ddd; }
   .toolbar button { background:#2563eb; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
   .toolbar a { margin-left:6px; }
   #sheet { width:210mm; min-height:297mm; margin:12px auto; background:#fff; padding:14mm 15mm; box-shadow:0 2px 12px rgba(0,0,0,.12); }
-  .hd { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid #333; padding-bottom:8px; margin-bottom:12px; }
-  .hd .ttl { font-size:22px; font-weight:700; letter-spacing:.12em; }
+  .hd { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid #333; padding-bottom:8px; margin-bottom:6px; }
+  .hd .ttl { font-size:22px; font-weight:700; letter-spacing:.1em; }
   .hd .date { font-size:18px; font-weight:700; }
-  .hd .co { font-size:12px; color:#444; }
-  .block { border:1px solid #bbb; border-radius:6px; padding:9px 12px; margin-bottom:9px; page-break-inside:avoid; }
-  .block .top { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
-  .badge { display:inline-block; padding:1px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid #999; }
-  .badge.h { background:#eef9f0; border-color:#9ccfad; }
-  .time { font-size:18px; font-weight:700; }
-  .depart { margin-left:auto; font-size:15px; font-weight:700; border:1.5px solid #333; border-radius:6px; padding:2px 10px; }
-  .nm { font-size:17px; font-weight:700; }
-  .nm .small { font-size:12px; font-weight:400; color:#555; }
-  .place { font-size:13px; color:#333; margin-top:1px; }
-  .items { font-size:13px; margin-top:3px; }
-  .assign { display:flex; gap:18px; margin-top:6px; font-size:14px; flex-wrap:wrap; }
-  .assign b { font-size:12px; color:#555; font-weight:700; margin-right:4px; }
-  .memo { font-size:13px; margin-top:4px; color:#333; }
-  .memo b { font-size:12px; color:#555; }
-  .empty { text-align:center; color:#888; padding:60px 0; }
+  .co { font-size:12px; color:#444; margin-bottom:12px; }
+  .sec { margin-bottom:12px; }
+  .sec > h2 { font-size:15px; margin:0 0 6px; padding:3px 10px; color:#fff; border-radius:4px; display:inline-block; }
+  .h-setup { background:var(--c-setup); } .h-teardown { background:var(--c-teardown); }
+  .h-deliver { background:var(--c-deliver); } .h-other { background:var(--c-other); }
+  .block { border:1px solid #bbb; border-left:5px solid #999; border-radius:6px; padding:8px 11px; margin-bottom:7px; page-break-inside:avoid; }
+  .b-setup { border-left-color:var(--c-setup); } .b-teardown { border-left-color:var(--c-teardown); }
+  .b-deliver { border-left-color:var(--c-deliver); } .b-other { border-left-color:var(--c-other); }
+  .block .top { display:flex; align-items:center; gap:8px; }
+  .badge { display:inline-block; padding:1px 7px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid #999; }
+  .time { font-size:17px; font-weight:700; }
+  .depart { margin-left:auto; font-size:14px; font-weight:700; border:1.5px solid #333; border-radius:6px; padding:2px 9px; }
+  .nm { font-size:16px; font-weight:700; margin-top:2px; }
+  .place { font-size:12px; color:#333; }
+  .items { font-size:12px; margin:3px 0; }
+  .items .alt { font-weight:700; }
+  .row2 { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; margin-top:4px; }
+  .row2 b { font-size:11px; color:#555; margin-right:3px; }
+  .memo { font-size:12px; margin-top:3px; }
+  .memo b { font-size:11px; color:#555; }
+  .empty { color:#888; }
+  .allempty { text-align:center; color:#888; padding:60px 0; }
   @media print { .toolbar { display:none; } body { background:#fff; } #sheet { width:210mm; min-height:auto; margin:0; box-shadow:none; padding:14mm 15mm; } }
 </style>
 </head>
@@ -41,44 +48,59 @@
   <span style="font-size:12px;color:#666;margin-left:8px;">余白は『既定』のままでOK</span>
 </div>
 
+{% set codes = {'施行':'setup','撤収':'teardown','配達':'deliver','その他':'other'} %}
 <div id="sheet">
-  <div class="hd">
-    <div class="ttl">作業指示書</div>
-    <div class="date">{{ date }}</div>
-  </div>
-  <div class="co" style="margin:-6px 0 12px;">{{ company_name }}</div>
+  <div class="hd"><div class="ttl">作業指示書</div><div class="date">{{ date }}</div></div>
+  <div class="co">{{ company_name }}</div>
 
   {% if blocks %}
-    {% for b in blocks %}
-    {% set is_h = b.doc_type == '配達書' %}
-    <div class="block">
-      <div class="top">
-        <span style="font-weight:700;color:#888;">{{ loop.index }}</span>
-        {% if b.department %}<span class="badge">{{ b.department }}</span>{% endif %}
-        {% if b.doc_type %}<span class="badge {{ 'h' if is_h else '' }}">{{ '配達' if is_h else '施行' }}</span>{% endif %}
-        <span class="time">{{ b.datetime[11:16] if b.datetime and b.datetime|length >= 16 else '' }}</span>
-        {% if b.depart_time %}<span class="depart">出発 {{ b.depart_time }}</span>{% endif %}
+    {% for typ in ['施行','撤収','配達','その他'] %}
+    {% set rows = blocks | selectattr('task_type','equalto',typ) | list %}
+    {% if rows %}
+    {% set code = codes[typ] %}
+    <div class="sec">
+      <h2 class="h-{{ code }}">【{{ typ }}】 {{ rows|length }}件</h2>
+      {% for b in rows %}
+      <div class="block b-{{ code }}">
+        <div class="top">
+          <span class="badge">{{ b.department or '' }}</span>
+          <span class="time">{{ b.datetime[11:16] if b.datetime and b.datetime|length>=16 else '' }}</span>
+          {% if b.depart_time %}<span class="depart">出発 {{ b.depart_time }}</span>{% endif %}
+        </div>
+        {% if typ == 'その他' %}
+          <div class="nm">{{ b.content or '（内容未記入）' }}</div>
+        {% else %}
+          <div class="nm">{{ b.souke_or_customer or '（名義なし）' }}{% if typ in ['施行','撤収'] and b.souke_or_customer %} 家{% endif %}</div>
+          {% if b.purpose %}<div class="place">用途：{{ b.purpose }}</div>{% endif %}
+          {% if b.place %}<div class="place">{{ b.place }}</div>{% endif %}
+          {% if b['items'] %}
+          <div class="items">
+            {% for it in b['items'] %}
+            <span class="{{ 'alt' if it.category=='祭壇' else '' }}">{{ it.category }}{% if it.product %} {{ it.product }}{% endif %} ×{{ it.qty }}{% if it.category=='祭壇' %} 下代¥{{ '{:,}'.format(it.price|int) }}{% endif %}</span>{% if not loop.last %}　/　{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% endif %}
+        <div class="row2">
+          {% if b.arrive_time %}<span><b>着</b>{{ b.arrive_time }}</span>{% endif %}
+          {% if b.kaishiki_time %}<span><b>開式</b>{{ b.kaishiki_time }}</span>{% endif %}
+          {% if b.highway %}<span><b>高速</b>{{ b.highway }}</span>{% endif %}
+          <span><b>担当</b>{{ b.staff|join('、') if b.staff else '―' }}</span>
+          <span><b>車</b>{{ b.vehicle or '―' }}</span>
+        </div>
+        {% if b.memo %}<div class="memo"><b>メモ</b> {{ b.memo }}</div>{% endif %}
       </div>
-      <div class="nm">{{ b.souke_or_customer or '（名義なし）' }}{% if not is_h and b.souke_or_customer %}<span class="small"> 家</span>{% endif %}</div>
-      {% if b.place %}<div class="place">{{ b.place }}</div>{% endif %}
-      {% if b.items_summary %}<div class="items">{{ b.items_summary }}</div>{% endif %}
-      <div class="assign">
-        <span><b>担当</b>{{ b.staff|join('、') if b.staff else '―' }}</span>
-        <span><b>車</b>{{ b.vehicle or '―' }}</span>
-      </div>
-      {% if b.memo %}<div class="memo"><b>メモ</b> {{ b.memo }}</div>{% endif %}
+      {% endfor %}
     </div>
+    {% endif %}
     {% endfor %}
   {% else %}
-    <div class="empty">{{ date }} の指示書はまだ作られていません。<br>ビルダーで案件を割り付けて保存してください。</div>
+    <div class="allempty">{{ date }} の指示書はまだ作られていません。<br>ビルダーで割り付けて保存してください。</div>
   {% endif %}
 </div>
 
 <script>
-  (function(){
-    var p = new URLSearchParams(location.search);
-    if (p.get("auto") === "1") setTimeout(function(){ window.print(); }, 400);
-  })();
+  (function(){ var p=new URLSearchParams(location.search); if(p.get("auto")==="1") setTimeout(function(){ window.print(); },400); })();
 </script>
 </body>
 </html>
