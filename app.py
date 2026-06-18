@@ -57,6 +57,11 @@ MASTERS_DB = _CFG.get("masters", "")
 MS = {"title": "名前", "type": "種別", "dept": "部門", "order": "並び"}
 # 日次作業指示書DBのプロパティ名（本体 382d8bdf... と一致）
 SHJ = {"title": "指示日", "date": "対象日", "blocks": "ブロックJSON", "editor": "更新者"}
+# シフトDB（月次シフト表の取込先）
+SHIFT_DB = _CFG.get("shift", "")
+SHF = {"title": "期間", "start": "開始日", "end": "終了日", "data": "データJSON"}
+# 部門→既定勤務地（指示書の本日名簿）。加賀以外は福井。
+DEPT_LOCATION = {"加賀業務部": "加賀"}
 TOKEN = os.environ.get("NOTION_TOKEN", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SEIKA_MODEL = "claude-sonnet-4-6"
@@ -520,6 +525,7 @@ def _select_options(db_id, prop_name):
 
 
 _MASTERS_CACHE = {}
+_SHIFT_CACHE = {}
 
 
 def load_masters(force=False):
@@ -608,6 +614,183 @@ def _candidates(department):
 def _venues():
     """式場候補（設定マスタから）。"""
     return load_masters().get("venues", [])
+
+
+# ───────────────────────── シフト（月次シフト表の取込・反映） ─────────────────────────
+_SHIFT_SKIP_COLS = {"日付", "曜日", "出社数", "全出社数", "備考", ""}
+_SHIFT_SYM = {"出": "出", "●": "休", "▲": "希望休", "出張": "出張"}
+
+
+def parse_shift_xlsx(file_bytes):
+    """シフト表Excelを {start, end, days:{date:{name:status}}, depts:{name:dept}} に解析。
+    記号正規化: 出→出 / ●→休 / ▲→希望休 / 出張→出張 / 空→未記入。年跨ぎ対応。"""
+    import io
+    import re
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.worksheets[0]
+    grid = [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
+            for r in range(1, ws.max_row + 1)]
+    start_year = None
+    for row in grid[:3]:
+        for v in row:
+            m = re.search(r"(\d{4})\s*年", str(v or ""))
+            if m:
+                start_year = int(m.group(1))
+                break
+        if start_year:
+            break
+    hidx = None
+    for i, row in enumerate(grid):
+        if str(row[0] or "").strip() == "日付":
+            hidx = i
+            break
+    if hidx is None:
+        raise ValueError("ヘッダ行（『日付』の行）が見つかりません。シフト表の形式をご確認ください。")
+    header = grid[hidx]
+    deptrow = grid[hidx - 1] if hidx > 0 else [None] * len(header)
+    filled, cur = [], ""
+    for v in deptrow:
+        s = str(v or "").strip()
+        if s:
+            cur = s
+        filled.append(cur)
+    cols, depts = {}, {}
+    for c, h in enumerate(header):
+        nm = str(h or "").strip()
+        if nm and nm not in _SHIFT_SKIP_COLS:
+            cols[c] = nm
+            depts[nm] = filled[c] if c < len(filled) else ""
+    days = {}
+    prev_month = None
+    year = start_year or 2000
+    for row in grid[hidx + 1:]:
+        a = str(row[0] or "").strip()
+        m = re.match(r"^(\d{1,2})\s*/\s*(\d{1,2})$", a)
+        if not m:
+            continue
+        mo, da = int(m.group(1)), int(m.group(2))
+        if prev_month is not None and mo < prev_month:
+            year += 1
+        prev_month = mo
+        date = f"{year:04d}-{mo:02d}-{da:02d}"
+        rec = {}
+        for c, nm in cols.items():
+            raw = str(row[c] or "").strip() if c < len(row) else ""
+            rec[nm] = _SHIFT_SYM.get(raw, "未記入" if raw == "" else raw)
+        days[date] = rec
+    dates = sorted(days.keys())
+    if not dates:
+        raise ValueError("日付データが読み取れませんでした。シフト表の形式をご確認ください。")
+    return {"start": dates[0], "end": dates[-1], "days": days, "depts": depts}
+
+
+def save_shift(parsed, editor=""):
+    """シフトを保存（同じ開始日の既存ページをarchiveしてから作成＝1取込1ページ）。"""
+    if not (TOKEN and SHIFT_DB):
+        raise RuntimeError("シフトDBが未設定です")
+    start, end = parsed.get("start", ""), parsed.get("end", "")
+    payload = json.dumps(parsed, ensure_ascii=False)
+    with httpx.Client(timeout=60) as client:
+        r = client.post(f"{API}/databases/{SHIFT_DB}/query", headers=_headers(),
+                        json={"filter": {"property": SHF["start"], "date": {"equals": start}},
+                              "page_size": 10})
+        if r.status_code == 200:
+            for it in r.json().get("results", []):
+                client.patch(f"{API}/pages/{it['id']}", headers=_headers(), json={"archived": True})
+        props = {
+            SHF["title"]: _title(f"{start}〜{end}"),
+            SHF["start"]: _date(start),
+            SHF["end"]: _date(end),
+            SHF["data"]: _rich_chunks(payload),
+        }
+        rc = client.post(f"{API}/pages", headers=_headers(),
+                         json={"parent": {"database_id": SHIFT_DB}, "properties": props})
+        if rc.status_code != 200:
+            raise RuntimeError(f"シフトの保存に失敗 {rc.status_code}: {rc.text[:300]}")
+    _SHIFT_CACHE.clear()
+    return len(parsed.get("days", {}))
+
+
+def _shift_pages():
+    """取込済みシフトの一覧 (id, 期間, 開始日, 終了日) を返す（新しい順）。"""
+    rows = []
+    if not (TOKEN and SHIFT_DB):
+        return rows
+    with httpx.Client(timeout=30) as client:
+        r = client.post(f"{API}/databases/{SHIFT_DB}/query", headers=_headers(),
+                        json={"sorts": [{"property": SHF["start"], "direction": "descending"}],
+                              "page_size": 50})
+        if r.status_code == 200:
+            for it in r.json().get("results", []):
+                p = it.get("properties", {})
+                rows.append({"id": it["id"], "label": _pget(p, SHF["title"]) or "",
+                             "start": _pget(p, SHF["start"]) or "", "end": _pget(p, SHF["end"]) or ""})
+    return rows
+
+
+def load_shift_status(date):
+    """指定日の {name: status} を返す（該当期間のシフトページを探索・簡易キャッシュ）。"""
+    if not (TOKEN and SHIFT_DB and date):
+        return {}, {}
+    if date in _SHIFT_CACHE:
+        return _SHIFT_CACHE[date]
+    result = ({}, {})
+    with httpx.Client(timeout=30) as client:
+        r = client.post(f"{API}/databases/{SHIFT_DB}/query", headers=_headers(),
+                        json={"filter": {"and": [
+                            {"property": SHF["start"], "date": {"on_or_before": date}},
+                            {"property": SHF["end"], "date": {"on_or_after": date}}]},
+                              "page_size": 5})
+        if r.status_code == 200:
+            for it in r.json().get("results", []):
+                raw = _pget(it.get("properties", {}), SHF["data"]) or ""
+                try:
+                    data = json.loads(raw) if raw else {}
+                except (ValueError, TypeError):
+                    continue
+                day = data.get("days", {}).get(date)
+                if day:
+                    result = (day, data.get("depts", {}))
+                    break
+    _SHIFT_CACHE[date] = result
+    return result
+
+
+def _norm_name(s):
+    """氏名の表記ゆれ吸収（全角括弧/空白→半角・除去）して同一人物の重複を防ぐ。"""
+    return (s or "").translate(str.maketrans("（）　", "() ")).replace(" ", "").strip()
+
+
+def staff_for_date(date):
+    """指定日の担当パレット [{name,status,dept}]（シフト名を部門順 ∪ 設定の担当）。
+    全角/半角の表記ゆれは同一人物として重複表示しない。"""
+    day, depts = load_shift_status(date)
+    dept_rank = {"本部": 0, "福井業務部": 1, "加賀業務部": 2, "福井卸部": 3}
+    names = sorted(day.keys(), key=lambda n: (dept_rank.get(depts.get(n, ""), 9), n))
+    out, seen = [], set()
+    for n in names:
+        out.append({"name": n, "status": day.get(n, ""), "dept": depts.get(n, "")})
+        seen.add(_norm_name(n))
+    for n in load_masters().get("staff", []) or STAFF:
+        if n and _norm_name(n) not in seen:
+            seen.add(_norm_name(n))
+            out.append({"name": n, "status": "", "dept": ""})
+    return out
+
+
+def default_roster(date):
+    """指定日の『本日の出社者』初期名簿 [{name,dept,location,arrive}]（status=出 の人）。"""
+    day, depts = load_shift_status(date)
+    dept_rank = {"本部": 0, "福井業務部": 1, "加賀業務部": 2, "福井卸部": 3}
+    names = [n for n in day if day.get(n) == "出"]
+    names.sort(key=lambda n: (dept_rank.get(depts.get(n, ""), 9), n))
+    roster = []
+    for n in names:
+        d = depts.get(n, "")
+        roster.append({"name": n, "dept": d,
+                       "location": DEPT_LOCATION.get(d, "福井"), "arrive": ""})
+    return roster
 
 
 @app.get("/healthz")
@@ -1173,11 +1356,15 @@ def day_tasks(target_date):
                     if (_pget(hp, H["delivery_at"]) or "")[:10] != target_date:
                         continue
                     items, summary = _order_items(client, dept, pid)
+                    cash = _num(_pget(hp, H["cash_receipt"]))
                     cards.append({"task_type": "配達", "order_page_id": pid, "department": dept,
                                   "souke_or_customer": _pget(hp, H["customer"]) or "",
+                                  "customer": _pget(hp, H["customer"]) or "",
                                   "datetime": _pget(hp, H["delivery_at"]) or "",
                                   "place": _pget(hp, H["deliver_address"]) or "",
                                   "purpose": _pget(hp, H["purpose"]) or "",
+                                  "cash_receipt": cash,
+                                  "receipt_needed": _pget(hp, H["receipt_needed"]) or "",
                                   "items": items, "items_summary": summary})
                     continue
                 # 施行受注書 → 施行 / 撤収 を別々に判定
@@ -1188,6 +1375,7 @@ def day_tasks(target_date):
                 items, summary = _order_items(client, dept, pid)
                 base = {"order_page_id": pid, "department": dept,
                         "souke_or_customer": _pget(hp, H["souke"]) or "",
+                        "customer": _pget(hp, H["customer"]) or "",
                         "place": _pget(hp, H["venue"]) or "",
                         "items": items, "items_summary": summary}
                 if svc[:10] == target_date:
@@ -1213,26 +1401,47 @@ def _shijisho_page(client, target_date):
     return None, None
 
 
+def _normalize_shijisho(raw):
+    """保存値を {header:{souban,shijisha,roster}, blocks:[...]} に正規化（旧list形式も吸収）。"""
+    try:
+        data = json.loads(raw) if raw else None
+    except (ValueError, TypeError):
+        data = None
+    if isinstance(data, list):
+        data = {"header": {}, "blocks": data}
+    elif not isinstance(data, dict):
+        data = {"header": {}, "blocks": []}
+    header = data.get("header") or {}
+    header.setdefault("souban", "")
+    header.setdefault("shijisha", "")
+    header.setdefault("roster", [])
+    blocks = data.get("blocks") or []
+    # 旧ブロック（staff[]＋vehicle）を assignments[{name,vehicle}] に変換
+    for b in blocks:
+        if "assignments" not in b:
+            veh = b.get("vehicle") or ""
+            b["assignments"] = [{"name": n, "vehicle": (veh if i == 0 else "")}
+                                for i, n in enumerate(b.get("staff") or [])]
+    return {"header": header, "blocks": blocks}
+
+
 def read_shijisho(target_date):
-    """指定日の保存済みブロック配列を返す（なければ空配列）。"""
+    """指定日の保存済み {header, blocks} を返す（なければ空）。"""
+    empty = {"header": {"souban": "", "shijisha": "", "roster": []}, "blocks": []}
     if not TOKEN or not SHIJISHO_DB:
-        return []
+        return empty
     with httpx.Client(timeout=30) as client:
         _pid, props = _shijisho_page(client, target_date)
         if not props:
-            return []
-        raw = _pget(props, SHJ["blocks"]) or ""
-        try:
-            return json.loads(raw) if raw else []
-        except (ValueError, TypeError):
-            return []
+            return empty
+        return _normalize_shijisho(_pget(props, SHJ["blocks"]) or "")
 
 
-def save_shijisho(target_date, blocks, editor=""):
+def save_shijisho(target_date, header, blocks, editor=""):
     """指定日の指示書を保存（同日の既存ページをarchiveしてから作成＝1日1ページ）。"""
     if not (TOKEN and SHIJISHO_DB):
         raise RuntimeError("指示書DBが未設定です")
-    payload = json.dumps(blocks, ensure_ascii=False)
+    payload = json.dumps({"header": header, "blocks": blocks}, ensure_ascii=False)
     with httpx.Client(timeout=60) as client:
         pid, _props = _shijisho_page(client, target_date)
         if pid:
@@ -1258,14 +1467,19 @@ def shijisho_builder(request: Request, date: str = "", msg: str = "", err: str =
         # 基本は翌日ぶんを作るので既定＝翌日
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     cards = day_tasks(date)
-    blocks = read_shijisho(date)
+    saved = read_shijisho(date)
+    header = saved["header"]
+    blocks = saved["blocks"]
     m = load_masters()
-    staff = m["staff"] or STAFF
+    staff = staff_for_date(date)            # [{name,status,dept}] シフト由来＋設定担当
     vehicles = m["vehicles"] or VEHICLES
+    roster_default = default_roster(date)   # その日の出社者（保存値が無い時の初期名簿）
     return templates.TemplateResponse("shijisho.html", {
-        "request": request, "date": date, "cards": cards, "blocks": blocks,
+        "request": request, "date": date, "cards": cards, "blocks": blocks, "header": header,
         "blocks_json": json.dumps(blocks, ensure_ascii=False),
+        "header_json": json.dumps(header, ensure_ascii=False),
         "cards_json": json.dumps(cards, ensure_ascii=False),
+        "roster_default_json": json.dumps(roster_default, ensure_ascii=False),
         "staff": staff, "vehicles": vehicles, "msg": msg, "err": err})
 
 
@@ -1277,7 +1491,8 @@ async def shijisho_save(request: Request, _u: str = Depends(auth), _c: None = De
     date = f.get("date") or ""
     try:
         blocks = json.loads(f.get("blocks") or "[]")
-        n = save_shijisho(date, blocks, editor=_u)
+        header = json.loads(f.get("header") or "{}")
+        n = save_shijisho(date, header, blocks, editor=_u)
         return RedirectResponse(
             f"/shijisho?date={quote(date)}&msg={quote(f'{n}件で保存しました')}", status_code=303)
     except Exception as e:  # noqa: BLE001
@@ -1290,9 +1505,51 @@ def shijisho_print(request: Request, date: str = "", _u: str = Depends(auth)):
     from datetime import datetime, timedelta
     if not (len(date) == 10 and date[4] == "-"):
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    saved = read_shijisho(date)
     return templates.TemplateResponse("shijisho_print.html", {
-        "request": request, "date": date, "blocks": read_shijisho(date),
+        "request": request, "date": date, "blocks": saved["blocks"], "header": saved["header"],
         "company_name": COMPANY})
+
+
+# ───────────────────────── シフト取込（責任者がxlsxをアップロード） ─────────────────────────
+@app.get("/shifts", response_class=HTMLResponse)
+def shifts_page(request: Request, msg: str = "", err: str = "", _u: str = Depends(auth)):
+    return templates.TemplateResponse("shifts.html", {
+        "request": request, "pages": _shift_pages(), "msg": msg, "err": err})
+
+
+@app.post("/shifts/upload")
+async def shifts_upload(request: Request, file: UploadFile = File(...),
+                        _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    try:
+        raw = await file.read()
+        if not raw:
+            raise RuntimeError("ファイルが空です")
+        parsed = parse_shift_xlsx(raw)
+        n = save_shift(parsed, editor=_u)
+        msg = f"{parsed['start']}〜{parsed['end']} を取込みました（{n}日分）"
+        return RedirectResponse(f"/shifts?msg={quote(msg)}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/shifts?err={quote('取込に失敗：'+str(e))}", status_code=303)
+
+
+@app.post("/shifts/delete")
+async def shifts_delete(request: Request, _u: str = Depends(auth), _c: None = Depends(check_csrf)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    f = await request.form()
+    pid = f.get("page_id") or ""
+    try:
+        with httpx.Client(timeout=30) as client:
+            r = client.patch(f"{API}/pages/{pid}", headers=_headers(), json={"archived": True})
+            if r.status_code != 200:
+                raise RuntimeError(f"削除に失敗 {r.status_code}")
+        _SHIFT_CACHE.clear()
+        return RedirectResponse(f"/shifts?msg={quote('削除しました')}", status_code=303)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse(f"/shifts?err={quote(str(e))}", status_code=303)
 
 
 # ───────────────────────── 設定（マスタ：担当・車・式場・得意先） ─────────────────────────

@@ -16,7 +16,16 @@
   .hd { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid #333; padding-bottom:8px; margin-bottom:6px; }
   .hd .ttl { font-size:22px; font-weight:700; letter-spacing:.1em; }
   .hd .date { font-size:18px; font-weight:700; }
-  .co { font-size:12px; color:#444; margin-bottom:12px; }
+  .co { font-size:12px; color:#444; margin-bottom:10px; }
+  /* 本日の出社者 */
+  .roster { border:1px solid #ccc; border-radius:6px; padding:7px 10px; margin-bottom:12px; page-break-inside:avoid; }
+  .roster .rt { font-size:12px; font-weight:700; margin-bottom:4px; }
+  .roster .roles { font-size:13px; margin-bottom:4px; }
+  .roster .roles b { background:#333; color:#fff; border-radius:4px; padding:1px 6px; font-size:11px; margin-right:4px; }
+  .roster .mem { display:flex; flex-wrap:wrap; gap:4px 8px; font-size:12px; }
+  .roster .m { border:1px solid #ddd; border-radius:5px; padding:1px 7px; }
+  .roster .m .loc { color:#1c8a44; font-weight:700; margin-right:3px; }
+  .roster .m .t { color:#555; margin-left:4px; }
   .sec { margin-bottom:12px; }
   .sec > h2 { font-size:15px; margin:0 0 6px; padding:3px 10px; color:#fff; border-radius:4px; display:inline-block; }
   .h-setup { background:var(--c-setup); } .h-teardown { background:var(--c-teardown); }
@@ -27,16 +36,22 @@
   .block .top { display:flex; align-items:center; gap:8px; }
   .badge { display:inline-block; padding:1px 7px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid #999; }
   .time { font-size:17px; font-weight:700; }
-  .depart { margin-left:auto; font-size:14px; font-weight:700; border:1.5px solid #333; border-radius:6px; padding:2px 9px; }
   .nm { font-size:16px; font-weight:700; margin-top:2px; }
+  .souke { font-size:12px; color:#555; }
   .place { font-size:12px; color:#333; }
   .items { font-size:12px; margin:3px 0; }
   .items .alt { font-weight:700; }
-  .row2 { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; margin-top:4px; }
+  .row2 { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; margin-top:4px; align-items:center; }
   .row2 b { font-size:11px; color:#555; margin-right:3px; }
+  .row2 .go { font-size:15px; font-weight:700; }
+  .row2 .arr { color:#888; font-weight:700; }
+  .assigns { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:13px; margin-top:4px; }
+  .assigns .a { font-weight:700; }
+  .assigns .a .v { color:#b9610a; }
   .memo { font-size:12px; margin-top:3px; }
   .memo b { font-size:11px; color:#555; }
-  .empty { color:#888; }
+  .cash { font-weight:700; }
+  .cash.yes { color:#1c8a44; } .cash.no { color:#888; }
   .allempty { text-align:center; color:#888; padding:60px 0; }
   @media print { .toolbar { display:none; } body { background:#fff; } #sheet { width:210mm; min-height:auto; margin:0; box-shadow:none; padding:14mm 15mm; } }
 </style>
@@ -49,9 +64,30 @@
 </div>
 
 {% set codes = {'施行':'setup','撤収':'teardown','配達':'deliver','その他':'other'} %}
+{% set hdr = header or {} %}
 <div id="sheet">
   <div class="hd"><div class="ttl">作業指示書</div><div class="date">{{ date }}</div></div>
   <div class="co">{{ company_name }}</div>
+
+  {% set roster = hdr.roster or [] %}
+  {% if roster or hdr.souban or hdr.shijisha %}
+  <div class="roster">
+    <div class="rt">本日の出社者</div>
+    {% if hdr.souban or hdr.shijisha %}
+    <div class="roles">
+      {% if hdr.souban %}<b>早番</b>{{ hdr.souban }}　{% endif %}
+      {% if hdr.shijisha %}<b>指示者</b>{{ hdr.shijisha }}{% endif %}
+    </div>
+    {% endif %}
+    {% if roster %}
+    <div class="mem">
+      {% for m in roster %}
+      <span class="m"><span class="loc">{{ m.location or '福井' }}</span>{{ m.name }}{% if m.arrive %}<span class="t">出社{{ m.arrive }}</span>{% endif %}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if blocks %}
     {% for typ in ['施行','撤収','配達','その他'] %}
@@ -65,29 +101,37 @@
         <div class="top">
           <span class="badge">{{ b.department or '' }}</span>
           <span class="time">{{ b.datetime[11:16] if b.datetime and b.datetime|length>=16 else '' }}</span>
-          {% if b.depart_time %}<span class="depart">出発 {{ b.depart_time }}</span>{% endif %}
         </div>
         {% if typ == 'その他' %}
           <div class="nm">{{ b.content or '（内容未記入）' }}</div>
         {% else %}
-          <div class="nm">{{ b.souke_or_customer or '（名義なし）' }}{% if typ in ['施行','撤収'] and b.souke_or_customer %} 家{% endif %}</div>
+          <div class="nm">{{ b.customer or '（得意先なし）' }}</div>
+          {% if b.souke %}<div class="souke">葬家：{{ b.souke }} 家</div>{% endif %}
           {% if b.purpose %}<div class="place">用途：{{ b.purpose }}</div>{% endif %}
-          {% if b.place %}<div class="place">{{ b.place }}</div>{% endif %}
+          {% if b.place %}<div class="place">会場：{{ b.place }}</div>{% endif %}
           {% if b['items'] %}
           <div class="items">
             {% for it in b['items'] %}
-            <span class="{{ 'alt' if it.category=='祭壇' else '' }}">{{ it.category }}{% if it.product %} {{ it.product }}{% endif %} ×{{ it.qty }}{% if it.category=='祭壇' %} 下代¥{{ '{:,}'.format(it.price|int) }}{% endif %}</span>{% if not loop.last %}　/　{% endif %}
+            <span class="{{ 'alt' if it.category=='祭壇' else '' }}">{{ it.category }}{% if it.product %} {{ it.product }}{% endif %}{% if it.category=='祭壇' %} 下代¥{{ '{:,}'.format(it.price|int) }}{% else %} ×{{ it.qty }}{% endif %}</span>{% if not loop.last %}　/　{% endif %}
             {% endfor %}
           </div>
           {% endif %}
         {% endif %}
         <div class="row2">
-          {% if b.arrive_time %}<span><b>着</b>{{ b.arrive_time }}</span>{% endif %}
+          {% if b.depart_time %}<span><b>出発</b><span class="go">{{ b.depart_time }}</span></span>{% endif %}
+          {% if b.depart_time and b.arrive_time %}<span class="arr">→</span>{% endif %}
+          {% if b.arrive_time %}<span><b>着</b><span class="go">{{ b.arrive_time }}</span></span>{% endif %}
           {% if b.kaishiki_time %}<span><b>開式</b>{{ b.kaishiki_time }}</span>{% endif %}
           {% if b.highway %}<span><b>高速</b>{{ b.highway }}</span>{% endif %}
-          <span><b>担当</b>{{ b.staff|join('、') if b.staff else '―' }}</span>
-          <span><b>車</b>{{ b.vehicle or '―' }}</span>
+          {% if typ == '配達' and b.cash %}<span><b>現金領収</b><span class="cash {{ 'yes' if b.cash=='有' else 'no' }}">{{ b.cash }}</span></span>{% endif %}
         </div>
+        {% set asg = b.assignments or [] %}
+        {% if asg %}
+        <div class="assigns">
+          <b style="font-size:11px;color:#555;">担当</b>
+          {% for a in asg %}<span class="a">{{ a.name }}{% if a.vehicle %}<span class="v"> → {{ a.vehicle }}</span>{% endif %}</span>{% endfor %}
+        </div>
+        {% endif %}
         {% if b.memo %}<div class="memo"><b>メモ</b> {{ b.memo }}</div>{% endif %}
       </div>
       {% endfor %}

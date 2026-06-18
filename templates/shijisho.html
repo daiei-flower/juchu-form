@@ -24,8 +24,12 @@
   .layout { display:grid; grid-template-columns:290px 1fr; gap:14px; padding:14px 16px; align-items:start; }
   @media (max-width:900px){ .layout { grid-template-columns:1fr; } }
   .pal { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px; position:sticky; top:62px; max-height:calc(100vh - 80px); overflow:auto; }
-  .pal h2 { font-size:12px; color:var(--mut); margin:12px 0 6px; }
+  .pal h2 { font-size:12px; color:var(--mut); margin:12px 0 6px; display:flex; align-items:center; gap:8px; }
   .pal h2:first-child { margin-top:0; }
+  .legend { font-size:10px; font-weight:400; color:var(--mut); display:inline-flex; gap:8px; }
+  .legend i { font-style:normal; padding:0 5px; border-radius:4px; }
+  .legend .lg-work { background:#eef4ff; color:#2563eb; }
+  .legend .lg-off { background:#f7eaea; color:#b91c1c; }
   .cardlist { display:flex; flex-direction:column; gap:7px; }
   .chips-wrap { display:flex; flex-wrap:wrap; gap:6px; }
   .ocard { border:1px solid var(--bd); border-left:4px solid var(--mut); border-radius:8px; padding:7px 9px; background:#fff; cursor:grab; font-size:13px; }
@@ -37,7 +41,9 @@
   .ocard .meta { font-size:11px; color:var(--mut); }
   .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:700; border:1px solid var(--bd); background:#f7f8fa; }
   .pill.staff { background:#eef4ff; color:#2563eb; border-color:#cfe0ff; cursor:grab; }
-  .pill.veh { background:#fff3e6; color:#b9610a; border-color:#f3d6ad; cursor:grab; }
+  .pill.staff.off { background:#f7eaea; color:#b91c1c; border-color:#f0c8c8; }
+  .pill.staff .st { font-size:9px; opacity:.85; margin-left:3px; }
+  .pill.veh { background:#fff3e6; color:#b9610a; border-color:#f3d6ad; }
   .pill.dept { background:#eef4ff; color:#2563eb; border:none; }
   .pill.tt { color:#fff; border:none; }
   .tt-setup { background:var(--c-setup); } .tt-teardown { background:var(--c-teardown); }
@@ -45,6 +51,18 @@
   .addrow { display:flex; gap:6px; margin-top:7px; }
   .addrow input { flex:1; }
   .empty-pal { font-size:12px; color:var(--mut); padding:6px 0; }
+
+  /* 本日の出社者 */
+  .roster { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px 14px; margin-bottom:14px; }
+  .roster h3 { margin:0 0 8px; font-size:14px; }
+  .roles { display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .roles label { font-size:13px; color:#333; display:flex; align-items:center; gap:6px; }
+  .rosterlist { display:flex; flex-wrap:wrap; gap:8px; }
+  .rrow { display:flex; align-items:center; gap:6px; border:1px solid var(--bd); border-radius:9px; padding:5px 8px; background:#fafbfc; }
+  .rrow .rname { font-weight:700; font-size:13px; min-width:64px; }
+  .rrow .rloc { padding:4px 6px; }
+  .rrow .rarrlab { font-size:11px; color:var(--mut); display:flex; align-items:center; gap:4px; }
+  .rrow .rarr { padding:4px 6px; }
 
   .sections { display:flex; flex-direction:column; gap:14px; }
   .section { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:10px 12px; }
@@ -64,20 +82,26 @@
   .block .ops button { border:1px solid var(--bd); background:#fff; border-radius:6px; width:25px; height:25px; cursor:pointer; font-size:12px; }
   .block .ops .del { color:var(--dang); border-color:#f3c0c2; }
   .block .nm { font-size:15px; font-weight:700; margin:3px 0 1px; }
+  .block .souke { font-size:12px; color:var(--mut); }
   .block .place { font-size:12px; color:#444; }
   .items { font-size:12px; color:#333; margin:4px 0; padding-left:2px; }
   .items .it { padding:1px 0; }
   .items .geday { font-weight:700; color:#000; }
   .brow { display:flex; gap:8px; flex-wrap:wrap; margin-top:7px; align-items:center; }
-  .slot { flex:1; min-width:150px; border:1.5px dashed var(--bd); border-radius:8px; padding:5px 8px; font-size:12px; color:var(--mut); min-height:34px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .slot { flex:1; min-width:220px; border:1.5px dashed var(--bd); border-radius:8px; padding:5px 8px; font-size:12px; color:var(--mut); min-height:34px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .slot.over { border-color:var(--pri); background:var(--pribg); }
   .slot .lab { font-weight:700; color:#333; }
+  .assigns { display:flex; flex-wrap:wrap; gap:8px; }
+  .assign { display:inline-flex; align-items:center; gap:4px; }
+  .assign .arr { color:var(--mut); font-weight:700; }
+  .assign .vehsel { padding:3px 5px; }
   .tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; }
   .tag.staff { background:#eef4ff; color:#2563eb; } .tag.veh { background:#fff3e6; color:#b9610a; }
   .tag .x { cursor:pointer; font-weight:900; }
   .ph { color:#aaa; }
   .field { display:flex; align-items:center; gap:4px; font-size:12px; color:#444; }
   .field input[type=text].content { flex:1; min-width:160px; }
+  .arrowsep { color:var(--mut); font-weight:700; }
 </style>
 </head>
 <body>
@@ -87,6 +111,7 @@
   <span class="sub">翌日ぶんを自動表示。カードをドラッグして割付。</span>
   <span class="spacer"></span>
   <label class="sub">対象日 <input type="date" id="datePick" value="{{ date }}"></label>
+  <a class="btn ghost small" href="/shifts">🗓 シフト</a>
   <a class="btn ghost small" href="/shijisho/print?date={{ date }}" target="_blank">印刷 / PDF</a>
   <a class="btn ghost small" href="/settings">⚙ 設定</a>
   <button type="button" class="btn small" id="saveBtn">保存</button>
@@ -101,19 +126,31 @@
     <h2>案件（{{ date }}）— ドラッグで割付</h2>
     <div class="cardlist" id="orderCards"></div>
 
-    <h2>担当者</h2>
+    <h2>担当者 <span class="legend"><i class="lg-work">出社</i><i class="lg-off">休/希望休</i></span></h2>
     <div class="chips-wrap" id="staffChips"></div>
     <div class="addrow"><input type="text" id="staffAdd" placeholder="担当を追加"><button type="button" class="btn ghost small" onclick="addStaffChip()">＋</button></div>
 
-    <h2>車両</h2>
+    <h2>車両（各担当の横で選択）</h2>
     <div class="chips-wrap" id="vehChips"></div>
     <div class="addrow"><input type="text" id="vehAdd" placeholder="車を追加"><button type="button" class="btn ghost small" onclick="addVehChip()">＋</button></div>
   </div>
 
-  <!-- 指示書（4区分） -->
+  <!-- 指示書 -->
   <form id="shForm" method="post" action="/shijisho/save">
     <input type="hidden" name="date" value="{{ date }}">
     <input type="hidden" name="blocks" id="blocksInput">
+    <input type="hidden" name="header" id="headerInput">
+
+    <!-- 本日の出社者 -->
+    <div class="roster">
+      <h3>本日の出社者</h3>
+      <div class="roles">
+        <label>早番 <select id="souban"></select></label>
+        <label>指示者 <select id="shijisha"></select></label>
+      </div>
+      <div class="rosterlist" id="rosterList"></div>
+    </div>
+
     <div class="sections" id="sections"></div>
     <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
       <button type="submit" class="btn small" id="saveBtn2">保存</button>
@@ -125,7 +162,9 @@
 <script>
   const CARDS = {{ cards_json|safe }};
   const SAVED = {{ blocks_json|safe }};
-  const STAFF = {{ staff|tojson }};
+  const HEADER = {{ header_json|safe }};
+  const ROSTER_DEFAULT = {{ roster_default_json|safe }};
+  const STAFF = {{ staff|tojson }};       // [{name,status,dept}]
   const VEH = {{ vehicles|tojson }};
   const TYPES = [
     {key:"施行", code:"setup"}, {key:"撤収", code:"teardown"},
@@ -136,6 +175,7 @@
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function timeOf(dt){ return (dt && dt.length>=16) ? dt.slice(11,16) : ""; }
   function yen(n){ n=parseFloat(n)||0; return "¥"+Math.round(n).toLocaleString("ja-JP"); }
+  function vehOptions(sel){ return '<option value="">車</option>'+VEH.map(v=>'<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(v)+'</option>').join(""); }
   let drag = null;
 
   // ===== セクション生成 =====
@@ -154,6 +194,33 @@
     zone.addEventListener("drop", e=>{ zone.classList.remove("drag"); if(drag&&drag.kind==="order"){ e.preventDefault(); addBlock(drag.payload); } });
   });
 
+  // ===== 本日の出社者 名簿 =====
+  const rosterListEl=document.getElementById("rosterList");
+  const soubanEl=document.getElementById("souban");
+  const shijishaEl=document.getElementById("shijisha");
+  function renderRoster(){
+    const list = (HEADER && HEADER.roster && HEADER.roster.length) ? HEADER.roster : ROSTER_DEFAULT;
+    rosterListEl.innerHTML="";
+    if(!list.length){
+      rosterListEl.innerHTML='<div class="empty-pal">シフト未取込です。<a href="/shifts">シフトを取込む</a>と本日の出社者が自動表示されます。</div>';
+    }
+    list.forEach(p=>{
+      const row=document.createElement("div"); row.className="rrow"; row.dataset.name=p.name; row.dataset.dept=p.dept||"";
+      row.innerHTML='<span class="rname">'+esc(p.name)+'</span>'+
+        '<select class="rloc"><option value="福井">福井</option><option value="加賀">加賀</option></select>'+
+        '<span class="rarrlab">出社 <input type="time" class="rarr"></span>';
+      rosterListEl.appendChild(row);
+      row.querySelector(".rloc").value=p.location||"福井";
+      if(p.arrive) row.querySelector(".rarr").value=p.arrive;
+    });
+    const names=list.map(p=>p.name);
+    [soubanEl,shijishaEl].forEach(sel=>{
+      sel.innerHTML='<option value="">—</option>'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");
+    });
+    soubanEl.value=(HEADER&&HEADER.souban)||"";
+    shijishaEl.value=(HEADER&&HEADER.shijisha)||"";
+  }
+
   // ===== 手札 =====
   function renderPalette(){
     const oc=document.getElementById("orderCards");
@@ -161,26 +228,44 @@
     else { oc.innerHTML="";
       CARDS.forEach(c=>{
         const code=CODE[c.task_type]||"other";
+        const head=(c.customer||c.souke_or_customer||'（名義なし）');
         const el=document.createElement("div"); el.className="ocard "+code; el.draggable=true;
         el.innerHTML='<div class="top"><span class="pill tt tt-'+code+'">'+esc(c.task_type)+'</span>'+
           '<span class="pill dept">'+esc(c.department)+'</span>'+
           '<span class="meta">'+esc(timeOf(c.datetime)||'時刻未定')+'</span></div>'+
-          '<div class="nm">'+esc(c.souke_or_customer||'（名義なし）')+'</div>'+
+          '<div class="nm">'+esc(head)+'</div>'+
+          (c.place?'<div class="meta">'+esc(c.place)+'</div>':'')+
           (c.items_summary?'<div class="meta">'+esc(c.items_summary)+'</div>':'');
         el.addEventListener("dragstart", ()=>{ drag={kind:"order", payload:c}; });
         el.addEventListener("dragend", ()=>{ drag=null; });
         oc.appendChild(el);
       });
     }
-    renderChips("staffChips", STAFF, "staff");
-    renderChips("vehChips", VEH, "veh");
+    renderStaffChips();
+    renderVehChips();
   }
-  function renderChips(id,list,kind){ const b=document.getElementById(id); b.innerHTML=""; list.forEach(n=>b.appendChild(makePill(n,kind))); }
-  function makePill(name,kind){ const p=document.createElement("span"); p.className="pill "+kind; p.textContent=name; p.draggable=true;
-    p.addEventListener("dragstart",()=>{ drag={kind:(kind==="staff"?"staff":"vehicle"), payload:{name}}; });
-    p.addEventListener("dragend",()=>{ drag=null; }); return p; }
-  function addStaffChip(){ const i=document.getElementById("staffAdd"),v=i.value.trim(); if(!v)return; if(!STAFF.includes(v))STAFF.push(v); renderChips("staffChips",STAFF,"staff"); i.value=""; }
-  function addVehChip(){ const i=document.getElementById("vehAdd"),v=i.value.trim(); if(!v)return; if(!VEH.includes(v))VEH.push(v); renderChips("vehChips",VEH,"veh"); i.value=""; }
+  function renderStaffChips(){ const b=document.getElementById("staffChips"); b.innerHTML="";
+    STAFF.forEach(o=>b.appendChild(makeStaffPill(o))); }
+  function makeStaffPill(o){
+    const off=(o.status==="休"||o.status==="希望休");
+    const p=document.createElement("span"); p.className="pill staff"+(off?" off":""); p.draggable=true;
+    let lab=esc(o.name);
+    if(o.status==="休") lab+=' <span class="st">休</span>';
+    else if(o.status==="希望休") lab+=' <span class="st">希望休</span>';
+    else if(o.status==="出張") lab+=' <span class="st">出張</span>';
+    p.innerHTML=lab;
+    p.addEventListener("dragstart",()=>{ drag={kind:"staff", payload:{name:o.name}}; });
+    p.addEventListener("dragend",()=>{ drag=null; });
+    return p;
+  }
+  function renderVehChips(){ const b=document.getElementById("vehChips"); b.innerHTML="";
+    VEH.forEach(n=>{ const p=document.createElement("span"); p.className="pill veh"; p.textContent=n; b.appendChild(p); }); }
+  function addStaffChip(){ const i=document.getElementById("staffAdd"),v=i.value.trim(); if(!v)return;
+    if(!STAFF.some(o=>o.name===v))STAFF.push({name:v,status:"",dept:""}); renderStaffChips(); i.value=""; }
+  function addVehChip(){ const i=document.getElementById("vehAdd"),v=i.value.trim(); if(!v)return; if(!VEH.includes(v))VEH.push(v);
+    renderVehChips();
+    document.querySelectorAll(".vehsel").forEach(sel=>{ const cur=sel.value; sel.innerHTML=vehOptions(cur); });
+    i.value=""; }
 
   // ===== ブロック =====
   function itemsHTML(items){
@@ -189,8 +274,8 @@
     items.forEach(it=>{
       const isAlt = it.category==="祭壇";
       h+='<div class="it'+(isAlt?' geday':'')+'">'+esc(it.category)+
-         (it.product?' '+esc(it.product):'')+' ×'+(it.qty||0)+
-         (isAlt?'　下代'+yen(it.price):'')+'</div>';
+         (it.product?' '+esc(it.product):'')+
+         (isAlt?'　下代'+yen(it.price):' ×'+(it.qty||0))+'</div>';
     });
     return h+'</div>';
   }
@@ -203,11 +288,13 @@
   function addBlock(d){
     d=d||{}; const type=d.task_type||"その他"; const code=CODE[type]||"other"; const zone=dz[code];
     const h=zone.querySelector(".hint"); if(h)h.remove();
+    const isOther=type==="その他", isTear=type==="撤収", isSetup=type==="施行", isDel=type==="配達";
+    const cust = d.customer || (isDel ? (d.souke_or_customer||"") : "");
+    const souke = d.souke || (!isDel && !isOther ? (d.souke_or_customer||"") : "");
     const b=document.createElement("div"); b.className="block t-"+code;
     b._data={ task_type:type, order_page_id:d.order_page_id||"", department:d.department||"",
-      souke_or_customer:d.souke_or_customer||"", datetime:d.datetime||"", place:d.place||"",
+      customer:cust, souke:souke, datetime:d.datetime||"", place:d.place||"",
       purpose:d.purpose||"", items:d.items||[] };
-    const isOther=type==="その他", isTear=type==="撤収", isSetup=type==="施行", isDel=type==="配達";
     let html='<div class="bhead">'+
       '<span class="pill tt tt-'+code+'">'+esc(type)+'</span>'+
       (b._data.department?'<span class="pill dept">'+esc(b._data.department)+'</span>':'')+
@@ -217,22 +304,23 @@
     if(isOther){
       html+='<div class="brow"><span class="field" style="flex:1;">内容 <input type="text" class="content" placeholder="作業内容"></span></div>';
     } else {
-      html+='<div class="nm" contenteditable="true">'+esc(b._data.souke_or_customer||'（名義なし）')+'</div>'+
+      html+='<div class="nm" contenteditable="true">'+esc(b._data.customer||'（得意先なし）')+'</div>'+
+        (b._data.souke?'<div class="souke">葬家：'+esc(b._data.souke)+'</div>':'')+
         (b._data.purpose?'<div class="place">用途：'+esc(b._data.purpose)+'</div>':'')+
-        '<div class="place" contenteditable="true">'+esc(b._data.place||'')+'</div>'+
+        '<div class="place" contenteditable="true">会場：'+esc(b._data.place||'')+'</div>'+
         itemsHTML(b._data.items);
     }
-    // 時間・高速
+    // 時間（出発 → 着）・高速
     html+='<div class="brow">';
     if(isDel||isSetup||isTear||isOther) html+='<span class="field">出発 <input type="time" class="depart"></span>';
-    if(isSetup||isTear) html+='<span class="field">着 <input type="time" class="arrive"></span>';
+    if(isSetup||isTear){ html+='<span class="arrowsep">→</span><span class="field">着 <input type="time" class="arrive"></span>'; }
     if(isTear) html+='<span class="field">開式 <input type="time" class="kaishiki"></span>';
     if(isSetup||isTear) html+='<span class="field">高速 <select class="highway"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
+    if(isDel) html+='<span class="field">現金領収 <select class="cash"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
     html+='</div>';
-    // 担当・車
+    // 担当→車
     html+='<div class="brow">'+
-      '<div class="slot staff-slot"><span class="lab">担当</span><span class="chips"></span><span class="ph">担当をドロップ</span></div>'+
-      '<div class="slot veh-slot"><span class="lab">車</span><span class="veh"></span><span class="ph">車をドロップ</span></div>'+
+      '<div class="slot staff-slot"><span class="lab">担当→車</span><span class="assigns"></span><span class="ph">担当をドロップ</span></div>'+
       '</div>'+
       '<div class="brow"><span class="field" style="flex:1;">メモ <input type="text" class="memo" style="flex:1;"></span></div>';
     b.innerHTML=html;
@@ -244,67 +332,80 @@
     const sslot=b.querySelector(".staff-slot");
     sslot.addEventListener("dragover",e=>{ if(drag&&drag.kind==="staff"){ e.preventDefault(); sslot.classList.add("over"); } });
     sslot.addEventListener("dragleave",()=>sslot.classList.remove("over"));
-    sslot.addEventListener("drop",e=>{ e.preventDefault(); sslot.classList.remove("over"); if(drag&&drag.kind==="staff") assignStaff(b,drag.payload.name); });
-    const vslot=b.querySelector(".veh-slot");
-    vslot.addEventListener("dragover",e=>{ if(drag&&drag.kind==="vehicle"){ e.preventDefault(); vslot.classList.add("over"); } });
-    vslot.addEventListener("dragleave",()=>vslot.classList.remove("over"));
-    vslot.addEventListener("drop",e=>{ e.preventDefault(); vslot.classList.remove("over"); if(drag&&drag.kind==="vehicle") assignVehicle(b,drag.payload.name); });
+    sslot.addEventListener("drop",e=>{ e.preventDefault(); sslot.classList.remove("over"); if(drag&&drag.kind==="staff") addAssign(b,drag.payload.name,""); });
 
     // 復元
     if(isOther && d.content) b.querySelector(".content").value=d.content;
-    (d.staff||[]).forEach(n=>assignStaff(b,n));
-    if(d.vehicle) assignVehicle(b,d.vehicle);
+    (d.assignments||[]).forEach(a=>addAssign(b,a.name,a.vehicle||""));
     if(d.depart_time && b.querySelector(".depart")) b.querySelector(".depart").value=d.depart_time;
     if(d.arrive_time && b.querySelector(".arrive")) b.querySelector(".arrive").value=d.arrive_time;
     if(d.kaishiki_time && b.querySelector(".kaishiki")) b.querySelector(".kaishiki").value=d.kaishiki_time;
     if(d.highway && b.querySelector(".highway")) b.querySelector(".highway").value=d.highway;
+    if(b.querySelector(".cash")){
+      let cv=d.cash;
+      if(cv===undefined||cv===null||cv==="") cv=((parseFloat(d.cash_receipt)||0)>0)?"有":"";
+      b.querySelector(".cash").value=cv||"";
+    }
     if(d.memo) b.querySelector(".memo").value=d.memo;
 
     zone.appendChild(b);
     return b;
   }
-  function assignStaff(block,name){ if(!name)return; const chips=block.querySelector(".staff-slot .chips");
-    if([...chips.querySelectorAll(".tag")].some(t=>t.dataset.name===name))return;
+  function addAssign(block,name,vehicle){
+    if(!name)return; const wrap=block.querySelector(".staff-slot .assigns");
+    if([...wrap.querySelectorAll(".assign")].some(a=>a.dataset.name===name))return;
     block.querySelector(".staff-slot .ph").style.display="none";
-    const t=document.createElement("span"); t.className="tag staff"; t.dataset.name=name; t.innerHTML=esc(name)+' <span class="x">×</span>';
-    t.querySelector(".x").onclick=()=>{ t.remove(); if(!chips.querySelector(".tag")) block.querySelector(".staff-slot .ph").style.display=""; };
-    chips.appendChild(t); }
-  function assignVehicle(block,name){ const v=block.querySelector(".veh-slot .veh");
-    block.querySelector(".veh-slot .ph").style.display=name?"none":"";
-    v.innerHTML=name?('<span class="tag veh" data-name="'+esc(name)+'">'+esc(name)+' <span class="x">×</span></span>'):"";
-    if(name) v.querySelector(".x").onclick=()=>{ assignVehicle(block,""); }; }
+    const a=document.createElement("span"); a.className="assign"; a.dataset.name=name;
+    a.innerHTML='<span class="tag staff">'+esc(name)+' <span class="x">×</span></span>'+
+      '<span class="arr">→</span><select class="vehsel">'+vehOptions(vehicle||"")+'</select>';
+    a.querySelector(".x").onclick=()=>{ a.remove(); if(!wrap.querySelector(".assign")) block.querySelector(".staff-slot .ph").style.display=""; };
+    wrap.appendChild(a);
+  }
 
   // ===== 保存 =====
+  function collectHeader(){
+    const roster=[...rosterListEl.querySelectorAll(".rrow")].map(r=>({
+      name:r.dataset.name, dept:r.dataset.dept||"",
+      location:r.querySelector(".rloc").value, arrive:r.querySelector(".rarr").value||""
+    }));
+    return { souban:soubanEl.value||"", shijisha:shijishaEl.value||"", roster:roster };
+  }
   function collect(){
     const out=[];
     TYPES.forEach(t=>{
       dz[t.code].querySelectorAll(".block").forEach((b,idx)=>{
-        const staff=[...b.querySelectorAll(".staff-slot .tag")].map(x=>x.dataset.name);
-        const vehEl=b.querySelector(".veh-slot .tag");
+        const assignments=[...b.querySelectorAll(".staff-slot .assign")].map(a=>({
+          name:a.dataset.name, vehicle:a.querySelector(".vehsel").value||"" }));
         const g=cls=>{ const el=b.querySelector("."+cls); return el?el.value:""; };
         const isOther=t.key==="その他";
+        const nmEl=b.querySelector(".nm[contenteditable]");
+        let customer=nmEl?nmEl.textContent.trim():""; if(customer==="（得意先なし）")customer="";
+        const plEl=b.querySelector(".place[contenteditable]");
+        let place=plEl?plEl.textContent.replace(/^会場：/,"").trim():"";
         out.push({
           task_type:t.key,
           order_page_id:b._data.order_page_id||"", department:b._data.department||"",
-          souke_or_customer:isOther?"":((b.querySelector(".nm")?.textContent||"").trim()),
+          customer:isOther?"":customer, souke:b._data.souke||"",
           datetime:b._data.datetime||"", purpose:b._data.purpose||"",
-          place:isOther?"":((b.querySelector(".place[contenteditable]")?.textContent||"").trim()),
-          items:b._data.items||[],
+          place:isOther?"":place, items:b._data.items||[],
           content:isOther?g("content"):"",
           depart_time:g("depart"), arrive_time:g("arrive"), kaishiki_time:g("kaishiki"),
-          highway:g("highway"), staff:staff, vehicle:vehEl?vehEl.dataset.name:"",
-          memo:g("memo"), order:idx
+          highway:g("highway"), cash:g("cash"),
+          assignments:assignments, memo:g("memo"), order:idx
         });
       });
     });
     return out;
   }
-  function doSave(){ document.getElementById("blocksInput").value=JSON.stringify(collect()); document.getElementById("shForm").submit(); }
+  function fill(){ document.getElementById("blocksInput").value=JSON.stringify(collect());
+    document.getElementById("headerInput").value=JSON.stringify(collectHeader()); }
+  function doSave(){ fill(); document.getElementById("shForm").submit(); }
   document.getElementById("saveBtn").onclick=doSave;
-  document.getElementById("shForm").addEventListener("submit",()=>{ document.getElementById("blocksInput").value=JSON.stringify(collect()); });
+  document.getElementById("shForm").addEventListener("submit",fill);
   document.getElementById("datePick").addEventListener("change",function(){ if(this.value) location.href="/shijisho?date="+encodeURIComponent(this.value); });
 
   // ===== 初期化 =====
+  renderRoster();
   renderPalette();
   if(SAVED&&SAVED.length){ SAVED.slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(addBlock); }
   refreshHints();

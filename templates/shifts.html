@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シフト取込</title>
+<style>
+  :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --dang:#e5484d; }
+  * { box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; margin:0; background:#f4f5f7; color:#1a1a1a; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:12px 18px; display:flex; align-items:center; gap:10px; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:820px; margin:0 auto; padding:16px; }
+  .btn { background:var(--pri); color:#fff; border:none; border-radius:8px; padding:9px 15px; font-size:14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--pri); border:1px solid var(--pri); }
+  .btn.small { padding:6px 11px; font-size:13px; }
+  .btn.del { background:transparent; color:var(--dang); border:none; cursor:pointer; font-size:14px; padding:4px 8px; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:16px 18px; margin-bottom:16px; }
+  .panel h2 { font-size:15px; margin:0 0 4px; }
+  .panel .note { font-size:12px; color:var(--mut); margin:0 0 12px; line-height:1.6; }
+  .drop { display:block; cursor:pointer; border:2px dashed #c3cbd6; border-radius:10px; padding:22px; text-align:center; color:var(--mut); background:#fafbfc; transition:.12s; }
+  .drop.over { border-color:var(--pri); background:#eff4ff; color:var(--pri); }
+  .drop input[type=file] { display:none; }
+  .file-name { font-size:13px; margin:8px 0; color:#1a1a1a; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:9px 10px; border-bottom:1px solid #eee; font-size:13px; text-align:left; }
+  th { font-size:11px; color:var(--mut); background:#fafafa; }
+  .empty { color:var(--mut); font-size:13px; padding:14px 0; }
+  .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; }
+  .msg.ok { background:#e8f7ee; border:1px solid #34c759; }
+  .msg.ng { background:#fdeaea; border:1px solid #e5484d; }
+</style>
+</head>
+<body>
+<header>
+  <a class="btn ghost small" href="/">🏠 ホーム</a>
+  <h1>🗓 シフト取込</h1>
+  <span class="sub">月次シフト表(Excel)を取込み、指示書で休みの担当を色分け表示します</span>
+</header>
+
+<div class="wrap">
+  {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="msg ng">{{ err }}</div>{% endif %}
+
+  <div class="panel">
+    <h2>シフト表をアップロード</h2>
+    <p class="note">
+      いつものシフト表（.xlsx）をそのままドラッグするか、クリックして選んでください。<br>
+      取込むと、その日に <b>出社</b> の人が指示書の担当パレットに並び、<b>休日・希望休</b> の人は色が変わります（出張は通常表示）。<br>
+      同じ期間を取込み直すと上書きされます。<span style="color:var(--mut)">※このデータは指示書だけに使い、損益・月次には一切影響しません。</span>
+    </p>
+    <form method="post" action="/shifts/upload" enctype="multipart/form-data" id="upForm">
+      <label class="drop" id="drop">
+        <input type="file" name="file" id="file" accept=".xlsx" required>
+        <div>📄 ここにシフト表(.xlsx)をドロップ、またはクリックして選択</div>
+        <div class="file-name" id="fname"></div>
+      </label>
+      <div style="margin-top:12px;text-align:right;">
+        <button type="submit" class="btn" id="submitBtn" disabled>取込む</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>取込済みのシフト</h2>
+    {% if pages %}
+    <table>
+      <thead><tr><th>期間</th><th>開始</th><th>終了</th><th></th></tr></thead>
+      <tbody>
+        {% for p in pages %}
+        <tr>
+          <td>{{ p.label }}</td>
+          <td>{{ p.start }}</td>
+          <td>{{ p.end }}</td>
+          <td style="text-align:right;">
+            <form method="post" action="/shifts/delete" onsubmit="return confirm('このシフトを削除しますか？');" style="margin:0;">
+              <input type="hidden" name="page_id" value="{{ p.id }}">
+              <button type="submit" class="btn del">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">まだ取込まれたシフトはありません。</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  const drop = document.getElementById("drop");
+  const file = document.getElementById("file");
+  const fname = document.getElementById("fname");
+  const submitBtn = document.getElementById("submitBtn");
+  function refresh(){
+    if (file.files && file.files.length){ fname.textContent = "選択中： " + file.files[0].name; submitBtn.disabled = false; }
+    else { fname.textContent = ""; submitBtn.disabled = true; }
+  }
+  file.addEventListener("change", refresh);
+  ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => { if (e.dataTransfer.files.length){ file.files = e.dataTransfer.files; refresh(); } });
+  // ページ外へのドロップでブラウザがファイルを開くのを防止
+  window.addEventListener("dragover", e => e.preventDefault());
+  window.addEventListener("drop", e => e.preventDefault());
+  document.getElementById("upForm").addEventListener("submit", () => { submitBtn.disabled = true; submitBtn.textContent = "取込み中…"; });
+</script>
+</body>
+</html>
