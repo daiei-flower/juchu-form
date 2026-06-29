@@ -60,8 +60,10 @@ SHJ = {"title": "指示日", "date": "対象日", "blocks": "ブロックJSON", 
 # シフトDB（月次シフト表の取込先）
 SHIFT_DB = _CFG.get("shift", "")
 SHF = {"title": "期間", "start": "開始日", "end": "終了日", "data": "データJSON"}
-# 部門→既定勤務地（指示書の本日名簿）。加賀以外は福井。
+# 部門→既定勤務地（指示書の当日名簿）。加賀以外は福井。
 DEPT_LOCATION = {"加賀業務部": "加賀"}
+# 当日の出社者カラムの並び（所属部門ごとに縦5分割）
+DEPT_COLS = ["福井業務部", "福井卸部", "加賀業務部", "造花部", "本部"]
 TOKEN = os.environ.get("NOTION_TOKEN", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SEIKA_MODEL = "claude-sonnet-4-6"
@@ -793,22 +795,22 @@ def staff_for_date(date):
     return out
 
 
-def default_roster(date):
-    """指定日の『本日の出社者』初期名簿 [{name,dept,location,arrive}]（status=出 の人）。"""
+def roster_columns(date):
+    """『当日の出社者』を5部門カラムで返す。各部門の所属者をシフト列順
+    （責任者→入社順を想定）で常時表示。status(出/休/希望休/出張)も付ける。
+    返り値: [{dept, members:[{name,dept,status,location,arrive}]}]（DEPT_COLS順）。"""
     day, depts = load_shift_status(date)
-    dept_rank = {"本部": 0, "福井業務部": 1, "加賀業務部": 2, "福井卸部": 3}
-    names = [n for n in day if day.get(n) == "出"]
-    names.sort(key=lambda n: (dept_rank.get(depts.get(n, ""), 9), n))
-    roster, seen = [], set()
-    for n in names:
-        key = _norm_name(n)
-        if key in seen:        # 表記ゆれ重複で名簿が二重に出るのを防ぐ
+    cols = {d: [] for d in DEPT_COLS}
+    seen = set()
+    for name, d in depts.items():        # depts はシフト列の並びを保持
+        key = _norm_name(name)
+        if key in seen:
             continue
         seen.add(key)
-        d = depts.get(n, "")
-        roster.append({"name": n, "dept": d,
-                       "location": DEPT_LOCATION.get(d, "福井"), "arrive": ""})
-    return roster
+        col = d if d in cols else "本部"   # 未知部門は本部へ寄せる（保険）
+        cols[col].append({"name": name, "dept": d, "status": day.get(name, ""),
+                          "location": DEPT_LOCATION.get(d, "福井"), "arrive": ""})
+    return [{"dept": d, "members": cols[d]} for d in DEPT_COLS]
 
 
 @app.get("/healthz")
@@ -1508,13 +1510,13 @@ def shijisho_builder(request: Request, date: str = "", msg: str = "", err: str =
     m = load_masters()
     staff = staff_for_date(date)            # [{name,status,dept}] シフト由来＋設定担当
     vehicles = m["vehicles"] or VEHICLES
-    roster_default = default_roster(date)   # その日の出社者（保存値が無い時の初期名簿）
+    roster_cols = roster_columns(date)      # 当日の出社者（部門別5カラム・常時全員）
     return templates.TemplateResponse("shijisho.html", {
         "request": request, "date": date, "cards": cards, "blocks": blocks, "header": header,
         "blocks_json": json.dumps(blocks, ensure_ascii=False),
         "header_json": json.dumps(header, ensure_ascii=False),
         "cards_json": json.dumps(cards, ensure_ascii=False),
-        "roster_default_json": json.dumps(roster_default, ensure_ascii=False),
+        "roster_cols_json": json.dumps(roster_cols, ensure_ascii=False),
         "staff": staff, "vehicles": vehicles, "msg": msg, "err": err})
 
 

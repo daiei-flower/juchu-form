@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>日次 作業指示書</title>
+<title>指示書</title>
 <style>
   :root { --bd:#d5d8dd; --mut:#666; --pri:#2563eb; --pribg:#eff4ff; --dang:#e5484d;
           --c-setup:#2563eb; --c-teardown:#e8830c; --c-deliver:#1c8a44; --c-other:#888; }
@@ -52,17 +52,34 @@
   .addrow input { flex:1; }
   .empty-pal { font-size:12px; color:var(--mut); padding:6px 0; }
 
-  /* 本日の出社者 */
+  /* 当日の出社者（所属部門ごとに縦5カラム） */
   .roster { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px 14px; margin-bottom:14px; }
   .roster h3 { margin:0 0 8px; font-size:14px; }
   .roles { display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   .roles label { font-size:13px; color:#333; display:flex; align-items:center; gap:6px; }
-  .rosterlist { display:flex; flex-wrap:wrap; gap:8px; }
-  .rrow { display:flex; align-items:center; gap:6px; border:1px solid var(--bd); border-radius:9px; padding:5px 8px; background:#fafbfc; }
-  .rrow .rname { font-weight:700; font-size:13px; min-width:64px; }
-  .rrow .rloc { padding:4px 6px; }
-  .rrow .rarrlab { font-size:11px; color:var(--mut); display:flex; align-items:center; gap:4px; }
-  .rrow .rarr { padding:4px 6px; }
+  .rosterlist { display:flex; gap:8px; align-items:flex-start; }
+  .rcol { flex:1 1 0; min-width:0; border:1px solid var(--bd); border-radius:9px; padding:6px; background:#fafbfc; }
+  .rcolhd { font-size:11px; font-weight:700; color:var(--pri); text-align:center; padding:2px 0 6px; border-bottom:1px solid var(--bd); margin-bottom:6px; }
+  .rcol.r-fk { background:#f5f9fe; } .rcol.r-fk .rcolhd { color:#1d4ed8; }
+  .rcol.r-fo { background:#f2faf6; } .rcol.r-fo .rcolhd { color:#15803d; }
+  .rcol.r-kg { background:#fef8ef; } .rcol.r-kg .rcolhd { color:#b45309; }
+  .rcol.r-zk { background:#fdf4f8; } .rcol.r-zk .rcolhd { color:#be185d; }
+  .rcol.r-hb { background:#f7f6f3; } .rcol.r-hb .rcolhd { color:#555; }
+  .pill.dept.d-fk { background:#eef4fc; color:#1d4ed8; }
+  .pill.dept.d-fo { background:#eaf6f0; color:#157f3d; }
+  .pill.dept.d-kg { background:#fdf2e6; color:#b45309; }
+  .pill.dept.d-zk { background:#fceef4; color:#be185d; }
+  .pill.dept.d-hb { background:#f1f0ec; color:#555; }
+  .rrow { border:1px solid var(--bd); border-radius:7px; padding:5px 6px; background:#fff; margin-bottom:5px; }
+  .rrow:last-child { margin-bottom:0; }
+  .rrow .rname { font-weight:700; font-size:12px; margin-bottom:3px; }
+  .rrow.off { background:#f7eaea; }
+  .rrow.off .rname { color:#b91c1c; }
+  .rrow .st { font-size:9px; font-weight:700; margin-left:4px; opacity:.85; }
+  .rrow .rctl { display:flex; gap:4px; align-items:center; }
+  .rrow .rloc { padding:3px 4px; font-size:11px; flex:0 0 auto; }
+  .rrow .rarr { padding:3px 4px; font-size:11px; flex:1 1 auto; min-width:0; }
+  @media (max-width:900px){ .rosterlist { flex-wrap:wrap; } .rcol { flex:1 1 45%; } }
 
   .sections { display:flex; flex-direction:column; gap:14px; }
   .section { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:10px 12px; }
@@ -110,7 +127,7 @@
 <body>
 <header>
   <a class="btn ghost small" href="/">🏠 ホーム</a>
-  <h1>日次 作業指示書</h1>
+  <h1>指示書</h1>
   <span class="sub">翌日ぶんを自動表示。カードをドラッグして割付。</span>
   <span class="spacer"></span>
   <label class="sub">対象日 <input type="date" id="datePick" value="{{ date }}"></label>
@@ -144,9 +161,9 @@
     <input type="hidden" name="blocks" id="blocksInput">
     <input type="hidden" name="header" id="headerInput">
 
-    <!-- 本日の出社者 -->
+    <!-- 当日の出社者 -->
     <div class="roster">
-      <h3>本日の出社者</h3>
+      <h3>当日の出社者 <span class="sub" style="font-weight:400;">所属部門ごと（当日の勤務地・出社時間を入力）</span></h3>
       <div class="roles">
         <label>早番 <select id="souban"></select></label>
         <label>指示者 <select id="shijisha"></select></label>
@@ -166,7 +183,8 @@
   const CARDS = {{ cards_json|safe }};
   const SAVED = {{ blocks_json|safe }};
   const HEADER = {{ header_json|safe }};
-  const ROSTER_DEFAULT = {{ roster_default_json|safe }};
+  const ROSTER_COLS = {{ roster_cols_json|safe }};   // [{dept,members:[{name,dept,status,location,arrive}]}]
+  const DEPTCLS = {'福井業務部':'fk','福井卸部':'fo','加賀業務部':'kg','造花部':'zk','本部':'hb'};
   const STAFF = {{ staff|tojson }};       // [{name,status,dept}]
   const VEH = {{ vehicles|tojson }};
   const TYPES = [
@@ -205,26 +223,39 @@
     zone.addEventListener("drop", e=>{ zone.classList.remove("drag"); if(drag&&drag.kind==="order"){ e.preventDefault(); addBlock(drag.payload); } });
   });
 
-  // ===== 本日の出社者 名簿 =====
+  // ===== 当日の出社者 名簿（部門別5カラム） =====
   const rosterListEl=document.getElementById("rosterList");
   const soubanEl=document.getElementById("souban");
   const shijishaEl=document.getElementById("shijisha");
   function renderRoster(){
-    const list = (HEADER && HEADER.roster && HEADER.roster.length) ? HEADER.roster : ROSTER_DEFAULT;
+    // 保存値（名前→location/arrive）。所属はシフト由来で常時表示、保存値で勤務地/出社時間を復元
+    const saved={};
+    if(HEADER && HEADER.roster) HEADER.roster.forEach(p=>{ saved[p.name]={location:p.location, arrive:p.arrive}; });
     rosterListEl.innerHTML="";
-    if(!list.length){
-      rosterListEl.innerHTML='<div class="empty-pal">シフト未取込です。<a href="/shifts">シフトを取込む</a>と本日の出社者が自動表示されます。</div>';
+    const hasAny = ROSTER_COLS.some(c=>c.members.length);
+    if(!hasAny){
+      rosterListEl.innerHTML='<div class="empty-pal">シフト未取込です。<a href="/shifts">シフトを取込む</a>と当日の出社者が部門別に表示されます。</div>';
     }
-    list.forEach(p=>{
-      const row=document.createElement("div"); row.className="rrow"; row.dataset.name=p.name; row.dataset.dept=p.dept||"";
-      row.innerHTML='<span class="rname">'+esc(p.name)+'</span>'+
-        '<select class="rloc"><option value="福井">福井</option><option value="加賀">加賀</option></select>'+
-        '<span class="rarrlab">出社 <input type="time" class="rarr"></span>';
-      rosterListEl.appendChild(row);
-      row.querySelector(".rloc").value=p.location||"福井";
-      if(p.arrive) row.querySelector(".rarr").value=p.arrive;
+    const names=[];
+    ROSTER_COLS.forEach(col=>{
+      const c=document.createElement("div"); c.className="rcol r-"+(DEPTCLS[col.dept]||'hb');
+      c.innerHTML='<div class="rcolhd">'+esc(col.dept)+'</div>';
+      col.members.forEach(p=>{
+        const sv=saved[p.name]||{};
+        const off=(p.status==="休"||p.status==="希望休");
+        const row=document.createElement("div");
+        row.className="rrow"+(off?" off":""); row.dataset.name=p.name; row.dataset.dept=p.dept||""; row.dataset.status=p.status||"";
+        let st = p.status==="休"?'<span class="st">休</span>': p.status==="希望休"?'<span class="st">希望休</span>': p.status==="出張"?'<span class="st">出張</span>':'';
+        row.innerHTML='<div class="rname">'+esc(p.name)+st+'</div>'+
+          '<div class="rctl"><select class="rloc"><option value="福井">福井</option><option value="加賀">加賀</option></select>'+
+          '<input type="time" class="rarr" title="出社時間"></div>';
+        c.appendChild(row);
+        row.querySelector(".rloc").value=sv.location||p.location||"福井";
+        if(sv.arrive) row.querySelector(".rarr").value=sv.arrive;
+        names.push(p.name);
+      });
+      rosterListEl.appendChild(c);
     });
-    const names=list.map(p=>p.name);
     [soubanEl,shijishaEl].forEach(sel=>{
       sel.innerHTML='<option value="">—</option>'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");
     });
@@ -308,7 +339,7 @@
       purpose:d.purpose||"", items:d.items||[] };
     let html='<div class="bhead">'+
       '<span class="pill tt tt-'+code+'">'+esc(type)+'</span>'+
-      (b._data.department?'<span class="pill dept">'+esc(b._data.department)+'</span>':'')+
+      (b._data.department?'<span class="pill dept d-'+(DEPTCLS[b._data.department]||'hb')+'">'+esc(b._data.department)+'</span>':'')+
       '<span class="time">'+esc(timeOf(b._data.datetime)||'')+'</span>'+
       '<span class="ops"><button type="button" class="up">↑</button><button type="button" class="down">↓</button><button type="button" class="del">×</button></span>'+
       '</div>';
@@ -321,13 +352,18 @@
         '<div class="field" style="margin-top:3px;">会場 <input type="text" class="placeinput" placeholder="会場名・住所" value="'+esc(b._data.place||'')+'"></div>'+
         itemsHTML(b._data.items);
     }
-    // 時間（出発 → 着）・高速
+    // 時間（出発 → 着）・高速／その他は開始〜終了
     html+='<div class="brow">';
-    if(isDel||isSetup||isTear||isOther) html+='<span class="field">出発 <input type="time" class="depart"></span>';
-    if(isSetup||isTear){ html+='<span class="arrowsep">→</span><span class="field">着 <input type="time" class="arrive"></span>'; }
-    if(isTear) html+='<span class="field">開式 <input type="time" class="kaishiki"></span>';
-    if(isSetup||isTear) html+='<span class="field">高速 <select class="highway"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
-    if(isDel) html+='<span class="field">現金領収 <select class="cash"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
+    if(isOther){
+      html+='<span class="field">開始 <input type="time" class="depart"></span>'+
+            '<span class="arrowsep">〜</span><span class="field">終了 <input type="time" class="arrive"></span>';
+    } else {
+      if(isDel||isSetup||isTear) html+='<span class="field">出発 <input type="time" class="depart"></span>';
+      if(isSetup||isTear){ html+='<span class="arrowsep">→</span><span class="field">着 <input type="time" class="arrive"></span>'; }
+      if(isTear) html+='<span class="field">開式 <input type="time" class="kaishiki"></span>';
+      if(isSetup||isTear) html+='<span class="field">高速 <select class="highway"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
+      if(isDel) html+='<span class="field">現金領収 <select class="cash"><option value="">—</option><option value="有">有</option><option value="無">無</option></select></span>';
+    }
     html+='</div>';
     // 担当→車
     html+='<div class="brow">'+
@@ -383,7 +419,7 @@
   // ===== 保存 =====
   function collectHeader(){
     const roster=[...rosterListEl.querySelectorAll(".rrow")].map(r=>({
-      name:r.dataset.name, dept:r.dataset.dept||"",
+      name:r.dataset.name, dept:r.dataset.dept||"", status:r.dataset.status||"",
       location:r.querySelector(".rloc").value, arrive:r.querySelector(".rarr").value||""
     }));
     return { souban:soubanEl.value||"", shijisha:shijishaEl.value||"", roster:roster };

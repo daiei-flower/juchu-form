@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>作業指示書 {{ date }}</title>
+<title>指示書 {{ date }}</title>
 <style>
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing:border-box; }
@@ -14,19 +14,35 @@
   .toolbar button { background:#2563eb; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
   .toolbar a { margin-left:6px; }
   #sheet { width:210mm; min-height:297mm; margin:12px auto; background:#fff; padding:14mm 15mm; box-shadow:0 2px 12px rgba(0,0,0,.12); }
-  .hd { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid #333; padding-bottom:8px; margin-bottom:6px; }
-  .hd .ttl { font-size:22px; font-weight:700; letter-spacing:.1em; }
-  .hd .date { font-size:18px; font-weight:700; }
+  .hd { display:flex; align-items:baseline; justify-content:flex-start; gap:14px; border-bottom:2px solid #333; padding-bottom:8px; margin-bottom:6px; }
+  .hd .hdate { font-size:20px; font-weight:700; }
+  .hd .hlbl { font-size:22px; font-weight:700; letter-spacing:.1em; }
   .co { font-size:12px; color:#444; margin-bottom:10px; }
-  /* 本日の出社者 */
+  /* 当日の出社者（所属部門ごとに5カラム） */
   .roster { border:1px solid #ccc; border-radius:6px; padding:7px 10px; margin-bottom:12px; page-break-inside:avoid; }
   .roster .rt { font-size:12px; font-weight:700; margin-bottom:4px; }
-  .roster .roles { font-size:13px; margin-bottom:4px; }
+  .roster .roles { font-size:13px; margin-bottom:6px; }
   .roster .roles b { background:#333; color:#fff; border-radius:4px; padding:1px 6px; font-size:11px; margin-right:4px; }
-  .roster .mem { display:flex; flex-wrap:wrap; gap:4px 8px; font-size:12px; }
-  .roster .m { border:1px solid #ddd; border-radius:5px; padding:1px 7px; }
-  .roster .m .loc { color:#1c8a44; font-weight:700; margin-right:3px; }
-  .roster .m .t { color:#555; margin-left:4px; }
+  .roster .rcols { display:flex; gap:6px; align-items:flex-start; }
+  .roster .rcol { flex:1; border:1px solid #ddd; border-radius:5px; padding:0 0 4px; overflow:hidden; }
+  .roster .rcolhd { font-size:10px; font-weight:700; text-align:center; color:#fff; padding:2px 0; margin-bottom:3px; background:#777; }
+  .roster .rcol .m { display:block; border:none; padding:1px 5px; font-size:11px; }
+  .roster .rcol .m.off { color:#999; text-decoration:line-through; }
+  .roster .rcol .m .loc { color:#1c8a44; font-weight:700; margin-right:3px; }
+  .roster .rcol .m .stt { color:#b91c1c; font-size:9px; margin-left:3px; }
+  .roster .rcol .m .t { color:#555; margin-left:4px; }
+  /* 部門ごとに薄い色で色分け（列の背景＋見出しの色） */
+  .rcol.r-fk { background:#f5f9fe; } .rcol.r-fk .rcolhd { background:#4f86d6; }
+  .rcol.r-fo { background:#f2faf6; } .rcol.r-fo .rcolhd { background:#3ba06d; }
+  .rcol.r-kg { background:#fef8ef; } .rcol.r-kg .rcolhd { background:#d68a33; }
+  .rcol.r-zk { background:#fdf4f8; } .rcol.r-zk .rcolhd { background:#d77ba0; }
+  .rcol.r-hb { background:#f7f6f3; } .rcol.r-hb .rcolhd { background:#9a988f; }
+  /* ブロックの部門バッジも同じ配色で連動 */
+  .badge.d-fk { background:#eef4fc; border-color:#9ec4ef; color:#1d4ed8; }
+  .badge.d-fo { background:#eaf6f0; border-color:#9ad9bd; color:#157f3d; }
+  .badge.d-kg { background:#fdf2e6; border-color:#f0c489; color:#b45309; }
+  .badge.d-zk { background:#fceef4; border-color:#eeb0c9; color:#be185d; }
+  .badge.d-hb { background:#f1f0ec; border-color:#cfcdc4; color:#555; }
   .sec { margin-bottom:12px; }
   .sec > h2 { font-size:15px; margin:0 0 6px; padding:3px 10px; color:#fff; border-radius:4px; display:inline-block; }
   .h-setup { background:var(--c-setup); } .h-teardown { background:var(--c-teardown); }
@@ -59,6 +75,22 @@
   /* 現金領収「有」は色に頼らず黒枠バッジで強調（集金漏れ防止） */
   .cashbox { border:2px solid #111; border-radius:5px; padding:1px 8px; }
   .allempty { text-align:center; color:#888; padding:60px 0; }
+  /* 詳細：担当者｜式場｜時間｜商品 を横並び（各列は縦積み） */
+  .cols4 { display:flex; gap:8px; align-items:stretch; margin-top:5px; }
+  .cols4 .col { flex:1; min-width:0; border-left:1px solid #e2e2e2; padding:0 8px; }
+  .cols4 .col:first-child { border-left:none; padding-left:0; }
+  .colhd { font-size:10px; font-weight:700; color:#fff; background:#777; border-radius:3px; display:inline-block; padding:0 6px; margin-bottom:4px; }
+  .cv { font-size:12.5px; line-height:1.35; margin-bottom:3px; }
+  .cv .nmv { font-weight:700; font-size:13.5px; }
+  .cv b { font-size:10px; color:#555; margin-right:2px; }
+  .cv .go { font-size:14px; font-weight:700; }
+  .cv.alt .nmv, .cv.alt { font-weight:700; }
+  .cv.muted { color:#aaa; }
+  .cv .arr2 { color:#888; font-weight:700; }
+  .cv .veh { color:#b9610a; font-weight:700; font-size:12px; }
+  .sub { font-size:11px; color:#666; display:block; }
+  .cv.alt .sub { color:#b9610a; }
+  .cashline { margin-top:6px; }
   @media print { .toolbar { display:none; } body { background:#fff; } #sheet { width:210mm; min-height:auto; margin:0; box-shadow:none; padding:14mm 15mm; } }
 </style>
 </head>
@@ -70,15 +102,16 @@
 </div>
 
 {% set codes = {'施行':'setup','撤収':'teardown','配達':'deliver','その他':'other'} %}
+{% set dept_cls = {'福井業務部':'fk','福井卸部':'fo','加賀業務部':'kg','造花部':'zk','本部':'hb'} %}
 {% set hdr = header or {} %}
 <div id="sheet">
-  <div class="hd"><div class="ttl">作業指示書</div><div class="date">{{ date }}</div></div>
+  <div class="hd"><span class="hdate">{{ date }}</span><span class="hlbl">指示書</span></div>
   <div class="co">{{ company_name }}</div>
 
   {% set roster = hdr.roster or [] %}
   {% if roster or hdr.souban or hdr.shijisha %}
   <div class="roster">
-    <div class="rt">本日の出社者</div>
+    <div class="rt">当日の出社者</div>
     {% if hdr.souban or hdr.shijisha %}
     <div class="roles">
       {% if hdr.souban %}<b>早番</b>{{ hdr.souban }}　{% endif %}
@@ -86,9 +119,19 @@
     </div>
     {% endif %}
     {% if roster %}
-    <div class="mem">
-      {% for m in roster %}
-      <span class="m"><span class="loc">{{ m.location or '福井' }}</span>{{ m.name }}{% if m.arrive %}<span class="t">出社{{ m.arrive }}</span>{% endif %}</span>
+    {% set dept_order = ['福井業務部','福井卸部','加賀業務部','造花部','本部'] %}
+    <div class="rcols">
+      {% for dep in dept_order %}
+      {% set mem = roster|selectattr('dept','equalto',dep)|list %}
+      {% if mem %}
+      <div class="rcol r-{{ dept_cls.get(dep, 'hb') }}">
+        <div class="rcolhd">{{ dep }}</div>
+        {% for m in mem %}
+        {% set off = m.status in ('休','希望休') %}
+        <div class="m{% if off %} off{% endif %}"><span class="loc">{{ m.location or '福井' }}</span>{{ m.name }}{% if off %}<span class="stt">{{ m.status }}</span>{% elif m.status=='出張' %}<span class="stt">出張</span>{% endif %}{% if m.arrive %}<span class="t">{{ m.arrive }}</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% endfor %}
     </div>
     {% endif %}
@@ -103,40 +146,51 @@
     <div class="sec">
       <h2 class="h-{{ code }}">【{{ typ }}】 {{ rows|length }}件</h2>
       {% for b in rows %}
+      {% set asg = b.assignments or [] %}
       <div class="block b-{{ code }}">
-        <div class="top">
-          <span class="badge">{{ b.department or '' }}</span>
-          <span class="time">{{ b.datetime[11:16] if b.datetime and b.datetime|length>=16 else '' }}</span>
-        </div>
+        <div class="top"><span class="badge d-{{ dept_cls.get(b.department, 'hb') }}">{{ b.department or '' }}</span></div>
         {% if typ == 'その他' %}
-          <div class="nm">{{ b.content or '（内容未記入）' }}</div>
-        {% else %}
-          <div class="nm">{{ b.customer or '（得意先なし）' }}</div>
-          {% if b.souke %}<div class="souke">葬家：{{ b.souke }} 家</div>{% endif %}
-          {% if b.purpose %}<div class="place">用途：{{ b.purpose }}</div>{% endif %}
-          {% if b.place %}<div class="place">会場：{{ b.place }}</div>{% endif %}
-          {% if b['items'] %}
-          <div class="items">
-            {% for it in b['items'] %}
-            <span class="{{ 'alt' if it.category=='祭壇' else '' }}">{{ it.category }}{% if it.product %} {{ it.product }}{% endif %}{% if it.category=='祭壇' %} 下代¥{{ '{:,}'.format(it.price|int) }}{% else %} ×{{ it.qty }}{% endif %}</span>{% if not loop.last %}　/　{% endif %}
-            {% endfor %}
+        <div class="cols4">
+          <div class="col">
+            <div class="colhd">担当者</div>
+            {% if asg %}{% for a in asg %}<div class="cv"><span class="nmv">{{ a.name }}</span>{% if a.vehicle %} <span class="arr2">→</span> <span class="veh">{{ a.vehicle }}</span>{% endif %}</div>{% endfor %}{% else %}<div class="cv muted">―</div>{% endif %}
           </div>
-          {% endif %}
-        {% endif %}
-        <div class="row2">
-          {% if b.depart_time %}<span><b>出発</b><span class="go">{{ b.depart_time }}</span></span>{% endif %}
-          {% if b.depart_time and b.arrive_time %}<span class="arr">→</span>{% endif %}
-          {% if b.arrive_time %}<span><b>着</b><span class="go">{{ b.arrive_time }}</span></span>{% endif %}
-          {% if b.kaishiki_time %}<span><b>開式</b>{{ b.kaishiki_time }}</span>{% endif %}
-          {% if b.highway %}<span><b>高速</b>{{ b.highway }}</span>{% endif %}
-          {% if typ == '配達' and b.cash %}<span class="{{ 'cashbox' if b.cash=='有' else '' }}"><b>現金領収</b><span class="cash {{ 'yes' if b.cash=='有' else 'no' }}">{{ b.cash }}</span></span>{% endif %}
+          <div class="col">
+            <div class="colhd">時間</div>
+            {% if b.depart_time or b.arrive_time %}<div class="cv"><span class="go">{{ b.depart_time or '—' }}</span> 〜 <span class="go">{{ b.arrive_time or '—' }}</span></div>{% else %}<div class="cv muted">―</div>{% endif %}
+          </div>
+          <div class="col" style="flex:2;">
+            <div class="colhd">内容</div>
+            <div class="cv">{{ b.content or '（内容未記入）' }}</div>
+          </div>
         </div>
-        {% set asg = b.assignments or [] %}
-        {% if asg %}
-        <div class="assigns">
-          <b style="font-size:11px;color:#555;">担当</b>
-          {% for a in asg %}<span class="a">{{ a.name }}{% if a.vehicle %}<span class="v"> → {{ a.vehicle }}</span>{% endif %}</span>{% endfor %}
+        {% else %}
+        <div class="cols4">
+          <div class="col">
+            <div class="colhd">担当者</div>
+            {% if asg %}{% for a in asg %}<div class="cv"><span class="nmv">{{ a.name }}</span>{% if a.vehicle %} <span class="arr2">→</span> <span class="veh">{{ a.vehicle }}</span>{% endif %}</div>{% endfor %}{% else %}<div class="cv muted">―</div>{% endif %}
+          </div>
+          <div class="col">
+            <div class="colhd">式場</div>
+            <div class="cv"><span class="nmv">{{ b.customer or '（得意先なし）' }}</span></div>
+            {% if b.place %}<div class="cv">{{ b.place }}</div>{% endif %}
+            {% if b.souke %}<div class="cv">{{ b.souke }} 家</div>{% endif %}
+            {% if b.purpose %}<div class="cv"><span class="sub">用途：{{ b.purpose }}</span></div>{% endif %}
+          </div>
+          <div class="col">
+            <div class="colhd">時間</div>
+            {% if b.depart_time %}<div class="cv"><b>出発</b><span class="go">{{ b.depart_time }}</span></div>{% endif %}
+            {% if b.arrive_time %}<div class="cv"><b>到着</b><span class="go">{{ b.arrive_time }}</span></div>{% endif %}
+            {% if b.kaishiki_time %}<div class="cv"><b>開式</b><span class="go">{{ b.kaishiki_time }}</span></div>{% endif %}
+            {% if b.highway %}<div class="cv"><span class="sub">高速 {{ b.highway }}</span></div>{% endif %}
+            {% if not (b.depart_time or b.arrive_time or b.kaishiki_time) %}<div class="cv muted">―</div>{% endif %}
+          </div>
+          <div class="col">
+            <div class="colhd">商品</div>
+            {% if b['items'] %}{% for it in b['items'] %}<div class="cv {{ 'alt' if it.category=='祭壇' else '' }}"><span class="nmv">{{ it.category }}{% if it.product %} {{ it.product }}{% endif %}</span>{% if it.category=='祭壇' %}<span class="sub">下代¥{{ '{:,}'.format(it.price|int) }}</span>{% else %}<span class="sub">×{{ it.qty }}</span>{% endif %}</div>{% endfor %}{% else %}<div class="cv muted">―</div>{% endif %}
+          </div>
         </div>
+        {% if typ == '配達' and b.cash %}<div class="cashline"><span class="{{ 'cashbox' if b.cash=='有' else '' }}"><b>現金領収</b><span class="cash {{ 'yes' if b.cash=='有' else 'no' }}">{{ b.cash }}</span></span></div>{% endif %}
         {% endif %}
         {% if b.memo %}<div class="memo"><b>メモ</b> {{ b.memo }}</div>{% endif %}
       </div>
