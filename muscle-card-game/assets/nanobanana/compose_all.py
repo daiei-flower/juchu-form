@@ -12,11 +12,11 @@ def key(path, hole=False):
         al[m]=1; rgb[m]=[38,40,46]
     return Image.fromarray(np.dstack([rgb,al*255]).astype(np.uint8),'RGBA')
 FR={
- 'training':dict(src='fe90911e-image.jpg',header=(239,255,1491,372),art=(246,443,1484,1206),text=(228,1263,1503,1710),
+ 'training':dict(src='fe90911e-image.jpg',plate=(45,50),header=(239,255,1491,372),art=(246,443,1484,1206),text=(228,1263,1503,1710),
    cells=[(245,397),(463,615),(680,832),(898,1050),(1116,1267),(1333,1486)],cy=(1777,1929),
    segs=[426,517,607,697,787,878,967,1061,1147,1237],sw=62,sy=(2040,2157),wl=330,wr=1400,wy=2100),
- 'method':dict(src='4a42d0ba-image.jpg',header=(237,237,1498,347),art=(268,406,1464,1158),text=(246,1240,1485,2188)),
- 'mental':dict(src='e405beac-image.jpg',header=(204,223,1529,328),art=(229,398,1504,1153),text=(228,1238,1524,2209)),
+ 'method':dict(src='4a42d0ba-image.jpg',plate=(40,40),header=(237,237,1498,347),art=(268,406,1464,1158),text=(246,1240,1485,2188)),
+ 'mental':dict(src='e405beac-image.jpg',plate=(28,30),header=(204,223,1529,328),art=(229,398,1504,1153),text=(228,1238,1524,2209)),
 }
 PLATE=None
 def card(kind,name,cost,art,eq,gem,label,effect,parts=None,weight=None):
@@ -43,8 +43,11 @@ def card(kind,name,cost,art,eq,gem,label,effect,parts=None,weight=None):
         c.alpha_composite(ic,(int((pr[0]+pr[2])/2-ic.width/2),int((pr[1]+pr[3])/2-ic.height/2)))
     if PLATE is None:
         p=key(U+'32f76ab7-image.jpg',hole=True); PLATE=p.crop(p.getbbox()).resize((250,250),Image.LANCZOS)
-    c.alpha_composite(PLATE,(M-30,M-30))
-    d.text((M-30+125,M-30+133),str(cost),font=font('DelaGothicOne-Regular.ttf',150),fill=hx('FFF8EF'),anchor='mm',stroke_width=8,stroke_fill=hx('1A1613'))
+    px0,py0=M+g.get('plate',(0,0))[0],M+g.get('plate',(0,0))[1]
+    c.alpha_composite(PLATE,(px0,py0))
+    fc=font('DelaGothicOne-Regular.ttf',150); t=str(cost)
+    l,tp,r,b=d.textbbox((0,0),t,font=fc,stroke_width=8)
+    d.text((px0+125-(l+r)/2,py0+125-(tp+b)/2),t,font=fc,fill=hx('FFF8EF'),stroke_width=8,stroke_fill=hx('1A1613'))
     tx0,ty0,tx1,ty1=g['text']; fb=font('MPLUS1p-ExtraBold.ttf',96)
     for i,ln in enumerate(effect):
         d.text((M+(tx0+tx1)/2,M+(ty0+ty1)/2+(i-(len(effect)-1)/2)*120),ln,font=fb,fill=hx('1E1A17'),anchor='mm')
