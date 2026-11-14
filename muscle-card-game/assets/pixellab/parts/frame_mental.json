@@ -1,0 +1,45 @@
+{
+ "desc": "pixel art trading card frame for a gym bodybuilding card game. Dark charcoal body, blue metallic beveled border with small metal rivets at the corners. Each piece is an empty recessed area: illustration window is plain dark, text box is plain cream paper.  No text, no icons, flat empty areas.",
+ "pieces": [
+  {
+   "id": "card",
+   "label": "card frame with blue metallic border",
+   "x": 0,
+   "y": 0,
+   "w": 200,
+   "h": 280,
+   "r": 10
+  },
+  {
+   "id": "art",
+   "label": "empty illustration window",
+   "x": 10,
+   "y": 30,
+   "w": 180,
+   "h": 110,
+   "r": 2
+  },
+  {
+   "id": "text",
+   "label": "empty cream text box",
+   "x": 10,
+   "y": 152,
+   "w": 180,
+   "h": 116,
+   "r": 4
+  }
+ ],
+ "palette": [
+  "#1A1613",
+  "#2B2622",
+  "#3A332D",
+  "#5A5048",
+  "#FFF8EF",
+  "#E2D5C3",
+  "#A3968A",
+  "#D8CABB",
+  "#1F4166",
+  "#2F5D8A",
+  "#4F86C0"
+ ]
+}

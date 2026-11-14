@@ -1,0 +1,198 @@
+{
+ "desc": "pixel art trading card frame for a gym bodybuilding card game. Thick bright red metallic outer border clearly visible on all four sides, dark charcoal inner body, with small metal rivets at the corners. Each piece is an empty recessed area: illustration window is plain dark, text box is plain cream paper. A row of six small empty square slots, and a gauge of ten small empty segments inside the bottom panel. No text, no icons, flat empty areas.",
+ "pieces": [
+  {
+   "id": "card",
+   "label": "card frame with red metallic border",
+   "x": 0,
+   "y": 0,
+   "w": 200,
+   "h": 280,
+   "r": 10
+  },
+  {
+   "id": "art",
+   "label": "empty illustration window",
+   "x": 10,
+   "y": 30,
+   "w": 180,
+   "h": 90,
+   "r": 2
+  },
+  {
+   "id": "text",
+   "label": "empty cream text box",
+   "x": 10,
+   "y": 132,
+   "w": 180,
+   "h": 60,
+   "r": 4
+  },
+  {
+   "id": "weight",
+   "label": "empty dark inset panel",
+   "x": 10,
+   "y": 226,
+   "w": 180,
+   "h": 44,
+   "r": 4
+  },
+  {
+   "id": "cell0",
+   "label": "empty small square slot",
+   "x": 11,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "cell1",
+   "label": "empty small square slot",
+   "x": 41,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "cell2",
+   "label": "empty small square slot",
+   "x": 71,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "cell3",
+   "label": "empty small square slot",
+   "x": 101,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "cell4",
+   "label": "empty small square slot",
+   "x": 131,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "cell5",
+   "label": "empty small square slot",
+   "x": 161,
+   "y": 199,
+   "w": 28,
+   "h": 20,
+   "r": 3
+  },
+  {
+   "id": "seg0",
+   "label": "empty gauge segment",
+   "x": 13.0,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg1",
+   "label": "empty gauge segment",
+   "x": 30.6,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg2",
+   "label": "empty gauge segment",
+   "x": 48.2,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg3",
+   "label": "empty gauge segment",
+   "x": 65.80000000000001,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg4",
+   "label": "empty gauge segment",
+   "x": 83.4,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg5",
+   "label": "empty gauge segment",
+   "x": 101.0,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg6",
+   "label": "empty gauge segment",
+   "x": 118.60000000000001,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg7",
+   "label": "empty gauge segment",
+   "x": 136.20000000000002,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg8",
+   "label": "empty gauge segment",
+   "x": 153.8,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  },
+  {
+   "id": "seg9",
+   "label": "empty gauge segment",
+   "x": 171.4,
+   "y": 256,
+   "w": 15,
+   "h": 6,
+   "r": 1
+  }
+ ],
+ "palette": [
+  "#1A1613",
+  "#2B2622",
+  "#3A332D",
+  "#5A5048",
+  "#FFF8EF",
+  "#E2D5C3",
+  "#A3968A",
+  "#D8CABB",
+  "#8A2D18",
+  "#C9492F",
+  "#E8603F"
+ ]
+}
