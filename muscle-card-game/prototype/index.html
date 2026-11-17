@@ -3,9 +3,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+1p:wght@500;700;800&display=swap">
 <style>
-/* Layout: one phone-width column — status bar, then the current scene (map / battle / reward…) */
+/* Layout: a fixed 960x540 landscape stage, scaled to fit the screen (Slay the Spire style battle layout) */
 :root{
-  --bg:#16130f; --panel:#24201b; --panel2:#2f2a24; --line:#4a423a;
+  --bg:#0f0d0b; --panel:#24201b; --panel2:#2f2a24; --line:#4a423a;
   --fg:#f3ece2; --muted:#b3a79a; --dim:#7d7368;
   --red:#d2492e; --red-l:#f1c9b8; --blue:#3e7cc4; --purple:#8a5cc0; --gold:#e9b13a;
   --green:#6dbb6a; --orange:#e8603f; --cream:#fff6e8; --ink:#1e1a17;
@@ -13,121 +13,168 @@
   --body:"M PLUS 1p","Hiragino Sans","Yu Gothic",sans-serif;
   color-scheme:dark;
 }
-html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-weight:500;font-size:14px;
-  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));}
-#app{max-width:560px;margin:0 auto;padding-block:8px 40px;display:flex;flex-direction:column;gap:10px}
-button{font-family:var(--body);font-weight:700;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:14px}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-weight:500;font-size:14px;margin:0;
+  padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+#wrap{position:fixed;inset:0;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+#stage{position:absolute;left:0;top:0;width:960px;height:540px;transform-origin:0 0;overflow:hidden;background:#15120f}
+button{font-family:var(--body);font-weight:700;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;font-size:14px}
 button:hover{border-color:var(--muted)}
-button:focus-visible,.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 button:disabled{opacity:.45;cursor:default}
-button.primary{background:var(--red);border-color:var(--red);color:#fff}
+button.primary{background:var(--red);border-color:#ff8a6a;color:#fff}
 button.gold{background:var(--gold);border-color:var(--gold);color:var(--ink)}
-h1,h2,h3{font-family:var(--display);font-weight:400;margin:0;text-wrap:balance}
-h2{font-size:20px} h3{font-size:16px}
+h1,h2,h3{font-family:var(--display);font-weight:400;margin:0}
+h2{font-size:22px} h3{font-size:16px}
 .muted{color:var(--muted)} .small{font-size:12px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
 
-/* status bar */
-.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:6px}
-.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;display:inline-flex;gap:4px;align-items:center;font-variant-numeric:tabular-nums}
-.chip b{font-family:var(--display);font-weight:400}
-.chip.hp b{color:var(--green)} .chip.gold b{color:var(--gold)}
-.chip.btn{cursor:pointer}
-.supp{border-style:dashed}
-.gears{display:flex;flex-wrap:wrap;gap:4px}
-.gear{font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 6px;cursor:pointer}
+/* top bar */
+.top{position:absolute;left:0;right:0;top:0;height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;background:linear-gradient(#000c,#0006);z-index:30;font-size:13px}
+.top .stat{display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
+.top .stat b{font-family:var(--display);font-weight:400;font-size:15px}
+.top .hp b{color:#ff7a6a} .top .gold b{color:var(--gold)}
+.top .sep{flex:1}
+.ibtn{padding:4px 10px;font-size:12px;border-radius:8px;background:#0008}
+.supp{border-style:dashed;border-color:#7ec3ff;color:#bfe0ff}
+.gearrow{display:flex;gap:4px;max-width:300px;overflow:hidden}
+.gear{font-size:11px;padding:3px 6px;border-radius:6px;background:#0008;white-space:nowrap}
 
-/* map */
-.map{position:relative;width:100%}
-.map svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.node{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;padding:0;display:grid;place-items:center;font-family:var(--display);font-size:13px;border:2px solid var(--line);background:var(--panel)}
-.node.n-enemy{color:var(--fg)} .node.n-elite{color:var(--orange);border-color:#7a3a28}
-.node.n-rest{color:var(--green)} .node.n-shop{color:var(--gold)} .node.n-event{color:#9fc3ff}
-.node.n-chest{color:var(--gold)} .node.n-boss{width:64px;height:64px;font-size:15px;color:#fff;background:var(--red);border-color:var(--red)}
-.node.avail{border-color:var(--gold);box-shadow:0 0 0 4px rgba(233,177,58,.25);animation:pulse 1.4s infinite}
-.node.done{opacity:.35}
-.node.here{background:var(--gold);color:var(--ink);opacity:1}
-@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(233,177,58,.08)}}
-@media (prefers-reduced-motion:reduce){.node.avail{animation:none}}
-.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted)}
+/* battle scene */
+.bg{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;filter:brightness(.62) saturate(.9)}
+.floorshade{position:absolute;left:0;right:0;bottom:0;height:260px;background:linear-gradient(transparent,#0a0806e8 60%)}
+.unit{position:absolute;bottom:200px;display:flex;flex-direction:column;align-items:center;transform:translateX(-50%);background:none;border:0;padding:0;border-radius:0;cursor:default}
+.unit img.spr{image-rendering:pixelated;display:block;filter:drop-shadow(0 6px 0 #0006)}
+.unit.target{cursor:pointer}
+.unit.target img.spr{filter:drop-shadow(0 0 6px var(--gold)) drop-shadow(0 0 2px var(--gold))}
+.unit.dead{opacity:0;pointer-events:none;transition:opacity .4s}
+.unit.hit img.spr{animation:shake .32s}
+@keyframes shake{25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+.hpwrap{margin-top:6px;display:flex;align-items:center;gap:4px}
+.hpb{width:130px;height:12px;border-radius:6px;background:#2a0f0b;border:1px solid #000;position:relative;overflow:hidden}
+.hpb i{position:absolute;inset:0 auto 0 0;background:linear-gradient(#ff6a50,#c43a22)}
+.hpb.blocked i{background:linear-gradient(#7fb3ff,#3b6fc0)}
+.hpb span{position:absolute;inset:0;display:grid;place-items:center;font-size:10.5px;font-weight:800;text-shadow:0 1px 0 #000;font-variant-numeric:tabular-nums}
+.blk{min-width:24px;height:24px;border-radius:6px;background:#2f5d8a;border:2px solid #9cc6ff;display:grid;place-items:center;font-family:var(--display);font-size:12px}
+.sts{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap;justify-content:center;max-width:170px}
+.sts span{font-size:10px;padding:1px 5px;border-radius:5px;background:#000a;border:1px solid #fff3}
+.intent{position:absolute;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap;pointer-events:none}
+.intent .ic{display:flex;gap:4px;align-items:center;font-family:var(--display);font-size:18px;text-shadow:0 2px 0 #000}
+.intent .q{font-size:11px;background:#000b;border-radius:6px;padding:2px 6px;color:#ffe9d6}
+.ic .atk{color:#ff7a5a} .ic .def{color:#8fc2ff} .ic .buf{color:#ffd36b} .ic .deb{color:#d7a6ff}
+.ename{font-size:11px;background:#000a;border-radius:5px;padding:1px 6px;margin-top:2px;white-space:nowrap}
+.float{position:absolute;font-family:var(--display);font-size:26px;color:#fff;text-shadow:0 3px 0 #000,0 0 8px #f00;pointer-events:none;animation:floatup .9s ease-out forwards;z-index:60}
+.float.me{text-shadow:0 3px 0 #000,0 0 8px #f60}
+.float.blkf{text-shadow:0 3px 0 #000,0 0 8px #39f}
+@keyframes floatup{from{transform:translate(-50%,0);opacity:1}to{transform:translate(-50%,-50px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.unit.hit img.spr,.float{animation:none}}
 
-/* battle */
-.enemies{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.enemy{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;text-align:left;cursor:default}
-.enemy.target{border-color:var(--gold);cursor:pointer}
-.enemy.dead{opacity:.3}
-.enemy .name{font-family:var(--display);font-size:15px}
-.intent{background:var(--panel2);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;flex-direction:column;gap:2px}
-.intent .q{color:var(--muted)}
-.intent .k{font-weight:800}
-.k-atk{color:#ff8f73} .k-def{color:#8fc2ff} .k-buf{color:#ffd36b} .k-deb{color:#d7a6ff}
-.hpbar{height:10px;border-radius:5px;background:#3a332d;overflow:hidden;position:relative}
-.hpbar i{position:absolute;inset:0 auto 0 0;background:var(--red)}
-.hpbar.me i{background:var(--green)}
-.hptext{font-size:12px;font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:6px}
-.st{display:flex;flex-wrap:wrap;gap:4px}
-.st span{font-size:11px;border-radius:6px;padding:1px 6px;background:var(--panel2);border:1px solid var(--line)}
-.st .blk{color:#8fc2ff;border-color:#2f5d8a}
-.me{display:flex;flex-direction:column;gap:6px}
-.energy{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#5a5048,#1f1b17);border:3px solid #bdb5ab;display:grid;place-items:center;font-family:var(--display);font-size:18px;flex:none}
-.piles{font-size:12px;color:var(--muted)}
-.hint{font-size:12px;color:var(--gold);min-height:18px}
-.log{font-size:12px;color:var(--muted);min-height:18px}
+.energy{position:absolute;left:28px;bottom:78px;width:84px;height:84px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:24px;
+  background:radial-gradient(circle at 35% 30%,#ffb26b,#d2492e 55%,#5c1a0f);border:3px solid #ffd6a8;box-shadow:0 0 18px #ff6a3a88;text-shadow:0 2px 0 #000;z-index:20}
+.energy.empty{filter:grayscale(.8) brightness(.7);box-shadow:none}
+.pile{position:absolute;bottom:14px;width:62px;height:58px;border-radius:10px;background:#000b;border:1px solid #fff3;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;z-index:20;padding:0}
+.pile b{font-family:var(--display);font-weight:400;font-size:18px}
+.endturn{position:absolute;right:22px;bottom:96px;z-index:20;font-family:var(--display);font-weight:400;font-size:16px;padding:12px 18px;border-radius:14px;box-shadow:0 4px 0 #6d2010}
+.hint{position:absolute;left:50%;transform:translateX(-50%);top:46px;font-size:13px;background:#000c;border:1px solid var(--gold);color:#ffe7a8;border-radius:8px;padding:4px 12px;z-index:25;white-space:nowrap}
+.log{position:absolute;left:50%;transform:translateX(-50%);top:46px;font-size:12px;background:#000a;border-radius:8px;padding:3px 10px;color:var(--muted);z-index:24;max-width:640px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* cards */
-.hand{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
-.card{position:relative;background:#2b2622;border:2px solid var(--line);border-radius:12px;padding:8px 7px 7px;display:flex;flex-direction:column;gap:5px;text-align:left;color:var(--fg);min-height:170px;cursor:pointer;font-weight:500}
-.card.t-tr{border-color:var(--red)} .card.t-me{border-color:var(--blue)} .card.t-mt{border-color:var(--purple)} .card.t-cu{border-color:#555;background:#1d1a17}
-.card.sel{transform:translateY(-6px);box-shadow:0 6px 0 var(--gold)}
-.card.off{opacity:.5}
-.card .top{display:flex;gap:6px;align-items:center;min-height:30px}
-.cost{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--display);font-size:14px;background:radial-gradient(circle at 35% 35%,#55595f,#202226);border:2px solid #c7ccd2;color:#fff}
-.card .nm{font-family:var(--display);font-size:12.5px;line-height:1.15}
-.card .ty{font-size:10px;color:var(--muted);display:flex;gap:4px;align-items:center}
-.gem{width:7px;height:7px;transform:rotate(45deg);display:inline-block;flex:none}
+/* hand */
+.hand{position:absolute;left:0;right:0;bottom:0;height:200px;z-index:40;pointer-events:none}
+.hcard{position:absolute;bottom:-34px;width:122px;transform-origin:50% 120%;transition:transform .15s,bottom .15s;pointer-events:auto;background:none;border:0;padding:0;border-radius:0}
+.hcard.sel{z-index:50 !important;bottom:60px}
+.hcard.off .card{filter:brightness(.6)}
+.hcard:focus-visible{outline:none}
+.hcard:focus-visible .card{outline:3px solid var(--gold)}
+
+/* card component (Nano Banana frame + overlays, sized by container width) */
+.card{position:relative;width:100%;aspect-ratio:1728/2432;container-type:inline-size;text-align:left;color:var(--ink)}
+.card .fr{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.card .ab{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.card .nm{color:#fff;font-family:var(--display);font-size:7.2cqw;line-height:1;justify-content:flex-start;padding-left:15cqw;white-space:nowrap;letter-spacing:-.02em}
+.card .nm.long{font-size:5.6cqw}
+.card .art img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated}
+.card .art .ph{width:100%;height:100%;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,#3a332d,#1a1613);color:#5d544b;font-family:var(--display);font-size:17cqw}
+.card .art .ph img{width:22cqw;height:auto;object-fit:contain;image-rendering:pixelated;opacity:.9}
+.card .band{position:absolute;left:0;right:0;bottom:0;height:16%;background:#0009;color:#fff;font-size:4.6cqw;font-weight:700;display:flex;align-items:center;justify-content:center;gap:1.5cqw}
+.gem{width:3.4cqw;height:3.4cqw;transform:rotate(45deg);display:inline-block;flex:none}
 .gem.C{background:#cfc8bf} .gem.U{background:#7ec3ff} .gem.R{background:#ffd24a} .gem.S{background:#8a8178}
-.card .eff{background:var(--cream);color:var(--ink);border-radius:7px;padding:6px 5px;font-size:12px;font-weight:700;line-height:1.35;flex:1;display:flex;align-items:center;justify-content:center;text-align:center}
-.parts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px}
-.parts span{font-size:9.5px;text-align:center;border-radius:3px;background:#3a332d;color:#8c7f73;padding:1px 0;font-weight:800}
-.parts .p2{background:var(--red);color:#fff} .parts .p1{background:var(--red-l);color:#5e1d0f}
-.wt{display:flex;flex-direction:column;gap:2px}
-.wt .lab{font-size:10px;display:flex;justify-content:space-between;color:var(--muted);font-variant-numeric:tabular-nums}
-.wt .lab b{color:var(--fg)}
-.segs{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:1px}
-.segs i{height:4px;background:#4a423a;border-radius:1px}
-.segs i.on{background:var(--orange)}
+.card .eff{font-size:7.2cqw;font-weight:800;line-height:1.25;text-align:center;padding:0 3cqw;flex-direction:column}
+.card .eff.sm{font-size:5.8cqw}
+.card .cell{font-weight:800;font-size:6.5cqw;color:#b5aba3;flex-direction:column;line-height:1;border-radius:1.4cqw}
+.card .cell.p2{background:#c9492f;color:#fff}
+.card .cell.p1{background:#f1c9b8;color:#5e1d0f}
+.card .cell i{font-style:normal;font-size:5cqw;letter-spacing:.3cqw}
+.card .seg{background:#e8603f;border-radius:.6cqw}
+.card .wl{color:#d8cabb;font-weight:800;font-size:4.6cqw}
+.card .wr{color:#fff;flex-direction:column;line-height:1.05;overflow:visible;white-space:nowrap}
+.card .wr b{font-family:var(--display);font-weight:400;font-size:4.6cqw}
+.card .wr small{font-size:2.9cqw;color:#d8cabb;font-weight:700}
+.card .plate{position:absolute;left:-4%;top:-3%;width:23%;aspect-ratio:1;pointer-events:none}
+.card .plate img{width:100%;height:100%}
+.card .plate b{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:400;font-size:11cqw;color:#fff;-webkit-text-stroke:.9cqw #1a1613;paint-order:stroke fill}
+.card.cu .fr{filter:grayscale(1) brightness(.7)}
+.upmark{color:var(--gold)}
+
+/* panels for non-battle screens */
+.screen{position:absolute;left:0;right:0;top:38px;bottom:0;overflow:auto;padding:14px 24px 24px;display:flex;flex-direction:column;gap:12px}
+.screen.center{align-items:center}
+.panel{background:#24201be8;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;width:100%;max-width:880px}
+.cards{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.cards .cw{width:132px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;padding:0;border-radius:0}
+.cards .cw.big{width:160px}
+.cards .cw.off{opacity:.5}
+.price{font-family:var(--display);color:var(--gold);font-size:14px}
+.list{display:flex;flex-direction:column;gap:6px}
+.list .it{background:var(--panel2);border-radius:10px;padding:8px 10px;font-size:13px}
+.choice{text-align:left;display:flex;flex-direction:column;gap:2px}
+.choice small{color:var(--muted);font-weight:500}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
 .badge-up{color:var(--gold);font-weight:800}
 
 /* body parts */
-.bodyparts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-.bp{background:var(--panel2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px}
+.bodyparts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.bp{background:var(--panel2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;border:1px solid var(--line)}
 .bp .t{display:flex;justify-content:space-between;align-items:baseline}
 .bp .t b{font-family:var(--display);font-weight:400;font-size:16px}
 .xp{height:6px;background:#3a332d;border-radius:3px;overflow:hidden}
 .xp i{display:block;height:100%;background:var(--gold)}
 .stim{font-size:11px;color:var(--gold)}
 
-/* modal */
-.modal{position:fixed;inset:0;background:rgba(10,8,6,.78);z-index:20;display:flex;align-items:flex-end;justify-content:center;
-  padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
-.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;max-height:85vh;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
-.list{display:flex;flex-direction:column;gap:6px}
-.list .it{background:var(--panel2);border-radius:10px;padding:8px 10px;font-size:13px}
-.choice{text-align:left;display:flex;flex-direction:column;gap:2px}
-.choice small{color:var(--muted);font-weight:500}
-.title{padding-block:24px;display:flex;flex-direction:column;gap:14px}
-.title h1{font-size:34px;line-height:1.1}
+/* map */
+.mapwrap{position:absolute;left:0;right:0;top:38px;bottom:0;overflow:auto;background:radial-gradient(circle at 50% 30%,#2c261f,#15120f)}
+.mapinner{position:relative;width:520px;margin:0 auto}
+.mapinner svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;padding:0;display:grid;place-items:center;font-family:var(--display);font-size:13px;border:2px solid var(--line);background:var(--panel)}
+.node.n-elite{color:var(--orange);border-color:#7a3a28} .node.n-rest{color:var(--green)} .node.n-shop{color:var(--gold)} .node.n-event{color:#9fc3ff} .node.n-chest{color:var(--gold)}
+.node.n-boss{width:70px;height:70px;font-size:16px;color:#fff;background:var(--red);border-color:var(--red)}
+.node.avail{border-color:var(--gold);box-shadow:0 0 0 4px #e9b13a40;animation:pulse 1.4s infinite}
+.node.done{opacity:.35} .node.here{background:var(--gold);color:var(--ink);opacity:1}
+@keyframes pulse{50%{box-shadow:0 0 0 9px #e9b13a14}}
+@media (prefers-reduced-motion:reduce){.node.avail{animation:none}}
+.maplegend{position:absolute;left:14px;top:52px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);background:#000a;border-radius:10px;padding:10px;z-index:5}
+.maptitle{position:absolute;right:14px;top:52px;z-index:5;text-align:right;background:#000a;border-radius:10px;padding:10px}
+
+/* modal (inside stage) */
+.modal{position:absolute;inset:0;background:#0a0806d0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:900px;width:100%;max-height:100%;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+
+/* title */
+.title{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:center;padding:30px 40px}
+.title h1{font-size:46px;line-height:1.1}
 .title h1 em{font-style:normal;color:var(--red)}
-.rules{font-size:13px;color:var(--muted);line-height:1.7}
-.price{font-family:var(--display);color:var(--gold);font-size:13px}
-.shopitem{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.rules{font-size:13px;color:var(--muted);line-height:1.75}
+.hero{position:relative;height:420px}
+.hero img{position:absolute;bottom:0;image-rendering:pixelated}
+
+/* rotate hint */
+#rot{position:fixed;inset:0;z-index:100;background:#0f0d0bf2;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px}
+#rot .ph{width:60px;height:100px;border:4px solid var(--fg);border-radius:12px;animation:rot 1.8s infinite}
+@keyframes rot{50%{transform:rotate(-90deg)}}
+#scene{position:absolute;inset:0}
 </style>
 
-<div id="app"></div>
-<div id="modal"></div>
+<div id="wrap"><div id="stage"></div></div>
+<div id="rot"><div class="ph"></div><h2>スマホを横向きにしてください</h2><div class="muted">このゲームは横画面で遊ぶように作られています。</div><button id="rotok">このまま遊ぶ</button></div>
 
 <script>
 'use strict';
@@ -495,6 +542,7 @@ function playCard(hi,ti){
 }
 function hitEnemy(e,d){
   const b=Math.min(e.block,d); e.block-=b; e.hp=Math.max(0,e.hp-(d-b));
+  FX.push({who:'u-e'+S.combat.enemies.indexOf(e),t:d-b>0?'-'+(d-b):'防御',blk:d-b<=0});
 }
 function checkEnd(){
   if(S.hp<=0){S.hp=0;S.screen='dead';render();return true}
@@ -512,7 +560,7 @@ function endTurn(){
   for(const e of alive()){
     e.block=0;
     const m=curMove(e);
-    if(m.a){for(let k=0;k<m.a[1];k++){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);const b=Math.min(C.block,d);C.block-=b;S.hp-=d-b}}
+    if(m.a){for(let k=0;k<m.a[1];k++){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);const b=Math.min(C.block,d);C.block-=b;S.hp-=d-b;FX.push({who:'u-me',t:d-b>0?'-'+(d-b):'防御',blk:d-b<=0})}}
     if(m.b)e.block+=m.b;
     if(m.pump)e.pump+=m.pump;
     if(m.wk)C.wk+=m.wk;
@@ -619,209 +667,277 @@ const EVENTS=[
 ];
 function openEvent(){S.event={i:Math.floor(Math.random()*EVENTS.length),out:null};S.screen='event'}
 
-// ====== modals ======
-let MODAL=null;
-function openModal(html){MODAL=html;renderModal()}
-function closeModal(){MODAL=null;PICK=null;renderModal()}
-function renderModal(){const m=document.getElementById('modal');m.innerHTML=MODAL?`<div class="modal" data-act="modal-bg"><div class="box" role="dialog" aria-modal="true">${MODAL}</div></div>`:''}
-let PICK=null;
-function openPick(title,cards,fn){
-  PICK={cards,fn};
-  openModal(`<h3>${esc(title)}</h3><div class="cardgrid">${cards.map((c,i)=>cardHTML(c,{act:'pick',arg:i})).join('')}</div><button data-act="close">やめる</button>`);
-}
-function deckModal(){
-  const sorted=S.deck.slice().sort((a,b)=>CARDS[a.id].t.localeCompare(CARDS[b.id].t)||a.id.localeCompare(b.id));
-  openModal(`<div class="row" style="justify-content:space-between"><h3>デッキ（${S.deck.length}枚）</h3><button data-act="close">閉じる</button></div><div class="cardgrid">${sorted.map(c=>cardHTML(c)).join('')}</div>`);
-}
-function partsHTML(stim){
-  return `<div class="bodyparts">${PARTS.map(p=>{const s=S.parts[p];return `<div class="bp"><div class="t"><span>${PJL[p]}</span><b>Lv${s.lv}</b></div><div class="xp"><i style="width:${Math.min(100,s.xp/need(s.lv)*100)}%"></i></div><div class="small muted">次まで ${need(s.lv)-s.xp}</div>${stim&&stim[p]?`<div class="stim">刺激 +${Math.round(stim[p])}</div>`:''}</div>`}).join('')}</div>`;
-}
-function partsModal(){
-  const C=S.combat;
-  openModal(`<div class="row" style="justify-content:space-between"><h3>部位</h3><button data-act="close">閉じる</button></div>${partsHTML(C?C.stim:null)}${C?'<div class="small muted">黄色の数字は、この戦闘で溜まった刺激です。戦闘が終わるとレベルに変わります。</div>':''}`);
-}
-function gearModal(g){openModal(`<h3>${esc(GEARS[g].n)}</h3><div>${esc(GEARS[g].d)}</div><button data-act="close">閉じる</button>`)}
-function suppModal(i){const s=SUPPS[S.supps[i]];const can=S.combat||!s.combat;openModal(`<h3>${esc(s.n)}</h3><div>${esc(s.d)}</div><div class="row"><button class="primary" data-act="use-supp" data-arg="${i}" ${can?'':'disabled'}>使う</button><button data-act="discard-supp" data-arg="${i}">捨てる</button><button data-act="close">閉じる</button></div>${can?'':'<div class="small muted">戦闘中に使えます</div>'}`)}
+// ====== UI (landscape stage) ======
+const AS='assets/';
+const SPR={player:['ch_player',38,88],student:['en_student',47,85],student2:['en_student2',36,96],influencer:['en_influencer',35,88],chicken:['en_chicken',33,84],
+  ojisan:['en_ojisan',46,96],trainer:['en_trainer',64,104],youtuber:['en_youtuber',52,104],nushi:['en_nushi',80,124]};
+const EQICON={barbell:'icon_barbell',dumbbell:'icon_dumbbell',cable:'icon_cable',machine:'icon_machine',body:'icon_bodyweight'};
+const ARTS={bench:'art_bench_press',deep_breath:'art_deep_breath',whey:'art_whey_protein'};
+const FW=1728,FH=2432;
+const GEO={
+ tr:{name:[239,255,1491,372],art:[252,449,1478,1200],text:[228,1263,1503,1710],
+     cells:[[245,397],[463,615],[680,832],[898,1050],[1116,1267],[1333,1486]],cy:[1777,1929],
+     segs:[426,517,607,697,787,878,967,1061,1147,1237],sw:62,sy:[2040,2157],wl:[238,2008,420,2195],wr:[1305,2008,1500,2195]},
+ me:{name:[204,223,1529,328],art:[235,404,1498,1147],text:[228,1238,1524,2209]},
+ mt:{name:[237,237,1498,347],art:[274,412,1458,1152],text:[246,1240,1485,2188]},
+};
+const pct=(x0,y0,x1,y1)=>`left:${(x0/FW*100).toFixed(2)}%;top:${(y0/FH*100).toFixed(2)}%;width:${((x1-x0)/FW*100).toFixed(2)}%;height:${((y1-y0)/FH*100).toFixed(2)}%`;
+let FX=[];
 
-// ====== render ======
-function bar(){
-  return `<div class="bar">
-   <span class="chip hp">メンタル <b>${S.hp}/${maxHp()}</b></span>
-   <span class="chip gold">ゴールド <b>${S.gold}</b></span>
-   <span class="chip">${S.floor?S.floor+'階':'スタート'}</span>
-   <button class="chip btn" data-act="deck">デッキ ${S.deck.length}</button>
-   <button class="chip btn" data-act="parts">部位</button>
-   ${[0,1,2].map(i=>S.supps[i]?`<button class="chip btn supp" data-act="supp" data-arg="${i}">${esc(SUPPS[S.supps[i]].n)}</button>`:'').join('')}
-   <div class="gears">${S.gears.map(g=>`<button class="gear" data-act="gear" data-arg="${g}">${esc(GEARS[g].n)}</button>`).join('')}</div>
+function cardHTML(c,opts={}){
+  const def=CARDS[c.id], v=vals(c.id);
+  const fk=def.t==='tr'?'tr':def.t==='mt'?'mt':'me', g=GEO[fk];
+  let h=`<div class="card ${def.t==='cu'?'cu':''}"><img class="fr" src="${AS}frame_${fk}.png" alt="">`;
+  const name=v.name+(v.tier?' ↑':'');
+  h+=`<div class="ab nm ${name.length>8?'long':''}" style="${pct(...g.name)}">${esc(v.name)}${v.tier?' <span class="upmark">↑</span>':''}</div>`;
+  let art;
+  if(ARTS[c.id])art=`<img src="${AS}${ARTS[c.id]}.png" alt="">`;
+  else if(def.t==='tr')art=`<div class="ph"><img src="${AS}${EQICON[def.eq]}.png" alt=""></div>`;
+  else art=`<div class="ph">${({me:'心',mt:'法',cu:'呪'})[def.t]}</div>`;
+  h+=`<div class="ab art" style="${pct(...g.art)}">${art}<div class="band"><span class="gem ${def.r}"></span>${TY[def.t]}${def.eq?'・'+EQ[def.eq]:''}</div></div>`;
+  const txt=cardText(c.id,opts.combat);
+  h+=`<div class="ab eff ${txt.length>40?'sm':''}" style="${pct(...g.text)}">${txt}</div>`;
+  if(fk==='tr'){
+    PARTS.forEach((p,i)=>{const n=def.m==='all'?1:((def.p||{})[p]||0);const k=n===0?'':(p===def.m?'p2':'p1');const [x0,x1]=g.cells[i];
+      h+=`<div class="ab cell ${k}" style="${pct(x0+6,g.cy[0]+6,x1-6,g.cy[1]-6)}">${PJ[p]}<i>${n?'•'.repeat(n):''}</i></div>`});
+    const w=weightView(def);
+    if(w){const on=Math.round(Math.min(1,Math.max(0,w.frac))*10);
+      g.segs.forEach((x,i)=>{if(i<on)h+=`<div class="ab seg" style="${pct(x+5,g.sy[0]+5,x+g.sw-5,g.sy[1]-5)}"></div>`});
+      h+=`<div class="ab wl" style="${pct(...g.wl)}">${def.w[3]==='kg'?'重量':'回数'}</div>`;
+      h+=`<div class="ab wr" style="${pct(...g.wr)}"><b>${w.lab}</b><small>${w.goal}</small></div>`;
+    }
+  }
+  if(def.c>=0)h+=`<div class="plate"><img src="${AS}plate.png" alt=""><b>${def.c}</b></div>`;
+  return h+'</div>';
+}
+
+function topBar(){
+  return `<div class="top">
+   <span class="stat hp">メンタル <b>${S.hp}/${maxHp()}</b></span>
+   <span class="stat gold">ゴールド <b>${S.gold}</b></span>
+   <span class="stat">${S.floor?S.floor+'階':'スタート'}</span>
+   ${[0,1,2].map(i=>S.supps[i]?`<button class="ibtn supp" data-act="supp" data-arg="${i}">${esc(SUPPS[S.supps[i]].n)}</button>`:'').join('')}
+   <span class="sep"></span>
+   <div class="gearrow">${S.gears.map(g=>`<button class="ibtn gear" data-act="gear" data-arg="${g}">${esc(GEARS[g].n)}</button>`).join('')}</div>
+   <button class="ibtn" data-act="parts">部位</button>
+   <button class="ibtn" data-act="deck">デッキ ${S.deck.length}</button>
   </div>`;
 }
+
 function render(){
-  const app=document.getElementById('app');
-  if(!S){app.innerHTML=titleHTML();return}
-  let h=bar();
-  const sc=S.screen;
-  if(sc==='map')h+=mapHTML();
-  else if(sc==='combat')h+=combatHTML();
-  else if(sc==='result')h+=resultHTML();
-  else if(sc==='reward')h+=rewardHTML();
-  else if(sc==='rest')h+=restHTML();
-  else if(sc==='shop')h+=shopHTML();
-  else if(sc==='event')h+=eventHTML();
-  else if(sc==='chest')h+=chestHTML();
-  else if(sc==='dead')h+=`<div class="panel title"><h1>心が折れた…</h1><div class="muted">${S.floor}階で力尽きた。誘惑に負けた日もある。また明日から頑張ろう。</div>${partsHTML()}<button class="primary" data-act="new">もう一度挑戦する</button></div>`;
-  else if(sc==='win')h+=`<div class="panel title"><h1>1章 <em>クリア！</em></h1><div class="muted">ジムの主を倒し、近所のジムで一目置かれる存在になった。（試作版はここまで）</div>${partsHTML()}<div class="small muted">デッキ ${S.deck.length}枚／ギア ${S.gears.length}個</div><button class="primary" data-act="new">最初から遊ぶ</button></div>`;
-  app.innerHTML=h;
-  if(sc==='map'){const el=document.querySelector('.node.avail');if(el)el.scrollIntoView({block:'center'})}
+  const sc=document.getElementById('scene');
+  if(!S){sc.innerHTML=titleHTML();return}
+  const s=S.screen; let h='';
+  if(s==='combat')h=combatHTML()+topBar();
+  else if(s==='map')h=mapHTML()+topBar();
+  else{
+    h=`<img class="bg" src="${AS}bg_gym.png" alt="" style="filter:brightness(.35) blur(1px)">`+topBar()+'<div class="screen center">';
+    if(s==='result')h+=resultHTML(); else if(s==='reward')h+=rewardHTML(); else if(s==='rest')h+=restHTML();
+    else if(s==='shop')h+=shopHTML(); else if(s==='event')h+=eventHTML(); else if(s==='chest')h+=chestHTML();
+    else if(s==='dead')h+=`<div class="panel"><h1>心が折れた…</h1><div class="muted">${S.floor}階で力尽きた。誘惑に負けた日もある。また明日から頑張ろう。</div>${partsHTML()}<button class="primary" data-act="new">もう一度挑戦する</button></div>`;
+    else if(s==='win')h+=`<div class="panel"><h1>1章 <span style="color:var(--red)">クリア！</span></h1><div class="muted">ジムの主を倒し、近所のジムで一目置かれる存在になった。（試作版はここまで）</div>${partsHTML()}<div class="small muted">デッキ ${S.deck.length}枚／ギア ${S.gears.length}個</div><button class="primary" data-act="new">最初から遊ぶ</button></div>`;
+    h+='</div>';
+  }
+  sc.innerHTML=h;
+  if(s==='map'){const el=document.querySelector('.node.avail');if(el)el.scrollIntoView({block:'center'})}
+  playFX();
 }
+function playFX(){
+  const fx=FX; FX=[];
+  fx.forEach(f=>{
+    const u=document.getElementById(f.who); if(!u)return;
+    u.classList.remove('hit'); void u.offsetWidth; if(!f.blk)u.classList.add('hit');
+    const d=document.createElement('div'); d.className='float'+(f.who==='u-me'?' me':'')+(f.blk?' blkf':''); d.textContent=f.t;
+    d.style.left='50%'; d.style.top=(30+Math.random()*30)+'px'; u.appendChild(d);
+    setTimeout(()=>d.remove(),950);
+  });
+}
+
 function titleHTML(){
-  return `<div class="panel title">
-   <div class="muted small">試作版・1章「近所のジム」</div>
-   <h1>筋肉<em>カード</em>ゲーム</h1>
-   <div class="rules">
-    ・ボディビルダーで、ライバルの誘惑に打ち勝ちながら大会（ボス）を目指します。<br>
-    ・毎ターン<b>スタミナ3</b>でカードを使います。トレーニングカードで相手のメンタルを削り、メンタルカードでフォーカス（守り）を得ます。<br>
-    ・トレーニングすると部位に<b>刺激</b>が溜まり、戦闘後に<b>部位レベル</b>が上がります。レベルが上がると重量が上がり、目標に届くとカードが<b>強化</b>されます。<br>
-    ・マップは下から上へ。分かれ道から進む道を選びます。
+  return `<img class="bg" src="${AS}bg_gym.png" alt="" style="filter:brightness(.45)">
+  <div class="title">
+   <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="muted small">試作版・1章「近所のジム」</div>
+    <h1>筋肉<em>カード</em>ゲーム</h1>
+    <div class="rules">ボディビルダーとして、ライバルたちの誘惑に打ち勝ち、ジムの主が待つ大会を目指そう。<br>
+    スタミナを使ってトレーニングカードを出すと、ポージングで相手のメンタルを削れる。鍛えた部位は戦闘後にレベルアップし、重量が上がるとカードが強化される。</div>
+    <div><button class="primary" data-act="new" style="font-size:18px;padding:12px 28px">はじめる</button></div>
    </div>
-   <button class="primary" data-act="new">はじめる</button>
+   <div class="hero">
+    <img src="${AS}ch_player.png" alt="" style="left:40px;height:${88*3.2}px">
+    <img src="${AS}en_nushi.png" alt="" style="right:20px;height:${124*3}px">
+   </div>
   </div>`;
 }
+
 function mapHTML(){
-  const ROWH=66, H=15*ROWH+30;
-  const X=c=>((c+0.5)/4*100);
-  const Y=r=>(14-r)*ROWH+36;
+  const ROWH=62, H=15*ROWH+70, W=520;
+  const X=c=>((c+0.5)/4*100), Y=r=>(14-r)*ROWH+50;
   const av=availNodes().map(a=>a.join(','));
-  let lines='', nodes='';
+  let lines='',nodes='';
   S.map.forEach((row,r)=>row.forEach((nd,i)=>{
-    nd.to.forEach(j=>{const b=S.map[r+1][j];const on=S.pos&&S.pos[0]===r&&S.pos[1]===i;lines+=`<line x1="${X(nd.c)}%" y1="${Y(r)}" x2="${X(b.c)}%" y2="${Y(r+1)}" stroke="${on?'#e9b13a':'#4a423a'}" stroke-width="${on?3:2}" stroke-dasharray="${on?'':'4 5'}"/>`});
+    nd.to.forEach(j=>{const b=S.map[r+1][j];const on=S.pos&&S.pos[0]===r&&S.pos[1]===i;lines+=`<line x1="${X(nd.c)}%" y1="${Y(r)}" x2="${X(b.c)}%" y2="${Y(r+1)}" stroke="${on?'#e9b13a':'#6b6158'}" stroke-width="${on?3:2}" stroke-dasharray="${on?'':'4 6'}"/>`});
     const isAv=av.includes(r+','+i), here=S.pos&&S.pos[0]===r&&S.pos[1]===i;
     nodes+=`<button class="node n-${nd.type} ${isAv?'avail':''} ${nd.done?'done':''} ${here?'here':''}" style="left:${X(nd.c)}%;top:${Y(r)}px" ${isAv?`data-act="go" data-arg="${r},${i}"`:'disabled'} aria-label="${NODE_NAME[nd.type]}">${NODE_LABEL[nd.type]}</button>`;
   }));
-  return `<div class="panel"><div class="row" style="justify-content:space-between"><h2>1章 近所のジム</h2><span class="muted small">光っているマスを選ぶ</span></div>
-   <div class="legend">${Object.keys(NODE_NAME).map(k=>`<span>${NODE_LABEL[k]}＝${NODE_NAME[k]}</span>`).join('')}</div>
-   <div class="map" style="height:${H}px"><svg aria-hidden="true">${lines}</svg>${nodes}</div></div>`;
+  return `<div class="mapwrap"><div class="mapinner" style="height:${H}px;width:${W}px"><svg aria-hidden="true">${lines}</svg>${nodes}</div></div>
+   <div class="maplegend">${Object.keys(NODE_NAME).map(k=>`<span>${NODE_LABEL[k]}　${NODE_NAME[k]}</span>`).join('')}</div>
+   <div class="maptitle"><h3>1章 近所のジム</h3><div class="small muted">光っているマスを選ぶ</div></div>`;
 }
+
 function stHTML(o,isMe){
-  const a=[];
-  if(o.block)a.push(`<span class="blk">フォーカス ${o.block}</span>`);
-  const pump=o.pump+(isMe?o.tempPump:0);
+  const a=[]; const pump=o.pump+(isMe?o.tempPump:0);
   if(pump)a.push(`<span>パンプ ${pump}</span>`);
   if(isMe&&o.dex)a.push(`<span>集中力 ${o.dex}</span>`);
   if(o.wk)a.push(`<span>バテ ${o.wk}</span>`);
   if(o.vu)a.push(`<span>動揺 ${o.vu}</span>`);
   if(isMe){Object.entries(o.pw).forEach(([k,n])=>a.push(`<span>${({whey:'ホエイ',split:'分割法',dirty:'ダーティバルク',allout:'オールアウト'})[k]}${n>1?'×'+n:''}</span>`));if(o.stimMult>1)a.push(`<span>刺激×${o.stimMult}</span>`);if(o.talk)a.push('<span>次の刺激×2</span>')}
-  return `<div class="st">${a.join('')}</div>`;
+  return `<div class="sts">${a.join('')}</div>`;
 }
-function intentHTML(e){
-  const m=curMove(e), C=S.combat; const parts=[];
-  if(m.a){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);parts.push(`<span class="k k-atk">誘惑 ${d}${m.a[1]>1?'×'+m.a[1]:''}</span>`)}
-  if(m.b)parts.push(`<span class="k k-def">フォーカス ${m.b}</span>`);
-  if(m.pump)parts.push(`<span class="k k-buf">パンプアップ +${m.pump}</span>`);
-  if(m.wk||m.vu)parts.push(`<span class="k k-deb">煽り${m.wk?' バテ'+m.wk:''}${m.vu?' 動揺'+m.vu:''}</span>`);
-  return `<div class="intent"><span class="q">次：${esc(m.q)}</span><div class="row" style="gap:8px">${parts.join('')}</div></div>`;
+function hpHTML(hp,max,block){
+  return `<div class="hpwrap">${block?`<span class="blk">${block}</span>`:''}<div class="hpb ${block?'blocked':''}"><i style="width:${Math.max(0,hp/max*100)}%"></i><span>${hp}/${max}</span></div></div>`;
+}
+function intentHTML(e,sprH){
+  const m=curMove(e),C=S.combat,p=[];
+  if(m.a){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);p.push(`<span class="atk">誘惑${d}${m.a[1]>1?'×'+m.a[1]:''}</span>`)}
+  if(m.b)p.push(`<span class="def">守${m.b}</span>`);
+  if(m.pump)p.push(`<span class="buf">強化</span>`);
+  if(m.wk||m.vu)p.push(`<span class="deb">煽り</span>`);
+  return `<div class="intent" style="bottom:${sprH+60}px"><div class="ic">${p.join('')}</div><div class="q">${esc(m.q)}</div></div>`;
 }
 function combatHTML(){
-  const C=S.combat; const targeting=C.sel!=null;
-  const en=C.enemies.map((e,i)=>`<button class="enemy ${e.hp<=0?'dead':''} ${targeting&&e.hp>0?'target':''}" ${targeting&&e.hp>0?`data-act="target" data-arg="${i}"`:'tabindex="-1"'}>
-    <span class="name">${esc(e.n)}</span>
-    <div class="hptext"><span>メンタル</span><span>${e.hp}/${e.max}</span></div><div class="hpbar"><i style="width:${e.hp/e.max*100}%"></i></div>
-    ${stHTML(e,false)}${e.hp>0?intentHTML(e):''}</button>`).join('');
-  const hand=C.hand.map((c,i)=>cardHTML(c,{act:'play',arg:i,sel:C.sel===i,off:CARDS[c.id].c>C.energy||CARDS[c.id].t==='cu',combat:true})).join('');
-  return `<div class="enemies">${en}</div>
-   <div class="panel me">
-    <div class="row" style="justify-content:space-between;align-items:center">
-     <div class="row"><div class="energy" aria-label="スタミナ">${C.energy}/3</div><div style="display:flex;flex-direction:column;gap:2px"><b>ボディビルダー</b><span class="piles">山札 ${C.draw.length}／捨て札 ${C.discard.length}／出し切り ${C.exhaust.length}</span></div></div>
-     <button class="primary" data-act="end">ターン終了</button>
-    </div>
-    <div class="hptext"><span>メンタル</span><span>${S.hp}/${maxHp()}</span></div><div class="hpbar me"><i style="width:${S.hp/maxHp()*100}%"></i></div>
-    ${stHTML(C,true)}
-    <div class="hint">${esc(C.log||'')}</div>
-   </div>
-   <div class="hand">${hand||'<div class="muted">手札がありません</div>'}</div>`;
+  const C=S.combat, SC=2.4;
+  let h=`<img class="bg" src="${AS}bg_gym.png" alt="" data-act="bg"><div class="floorshade" data-act="bg"></div>`;
+  const [ps,pw,ph]=SPR.player;
+  h+=`<div class="unit" id="u-me" style="left:200px;bottom:150px"><img class="spr" src="${AS}${ps}.png" alt="ボディビルダー" style="width:${pw*SC}px;height:${ph*SC}px">${hpHTML(S.hp,maxHp(),C.block)}${stHTML(C,true)}</div>`;
+  const list=C.enemies, n=list.length, xs=n===1?[700]:n===2?[610,800]:[570,700,830];
+  const targeting=C.sel!=null&&needsTarget(C.hand[C.sel]?.id||'');
+  list.forEach((e,i)=>{
+    const [es,ew,eh]=SPR[e.id]; const sc=ENEMIES[e.id].boss?2.1:ENEMIES[e.id].elite?2.2:SC;
+    const tgt=targeting&&e.hp>0;
+    h+=`<button class="unit ${e.hp<=0?'dead':''} ${tgt?'target':''}" id="u-e${i}" style="left:${xs[i]}px;bottom:150px" ${e.hp>0?`data-act="target" data-arg="${i}"`:''} aria-label="${esc(e.n)}">
+      ${e.hp>0?intentHTML(e,eh*sc):''}<img class="spr" src="${AS}${es}.png" alt="" style="width:${ew*sc}px;height:${eh*sc}px">
+      ${hpHTML(e.hp,e.max,e.block)}<span class="ename">${esc(e.n)}</span>${stHTML(e,false)}</button>`;
+  });
+  h+=`<div class="energy ${C.energy===0?'empty':''}" aria-label="スタミナ">${C.energy}/3</div>`;
+  h+=`<button class="pile" style="left:22px" data-act="pile" data-arg="draw">山札<b>${C.draw.length}</b></button>`;
+  h+=`<button class="pile" style="right:22px" data-act="pile" data-arg="discard">捨て札<b>${C.discard.length}</b></button>`;
+  h+=`<button class="primary endturn" data-act="end">ターン終了</button>`;
+  if(C.sel!=null){const id=C.hand[C.sel].id;h+=`<div class="hint">${needsTarget(id)&&alive().length>1?'使う相手をタップ':'もう一度タップで使う'}${CARDS[id].c>C.energy?'（スタミナが足りません）':''}</div>`}
+  else if(C.log)h+=`<div class="log">${esc(C.log)}</div>`;
+  // hand fan
+  const N=C.hand.length, step=Math.min(104,600/Math.max(1,N)), mid=(N-1)/2;
+  h+='<div class="hand">'+C.hand.map((c,i)=>{
+    const off=i-mid, x=480+off*step-61, rot=off*3.2, y=Math.abs(off)*Math.abs(off)*2.2;
+    const sel=C.sel===i, dis=CARDS[c.id].c>C.energy||CARDS[c.id].t==='cu';
+    const tf=sel?`translateX(${Math.max(20,Math.min(780,x-30))-x}px) scale(1.5)`:`rotate(${rot}deg) translateY(${y}px)`;
+    return `<button class="hcard ${sel?'sel':''} ${dis?'off':''}" style="left:${x}px;transform:${tf};z-index:${10+i}" data-act="play" data-arg="${i}" aria-label="${esc(vals(c.id).name)}">${cardHTML(c,{combat:true})}</button>`;
+  }).join('')+'</div>';
+  return h;
+}
+function cardsRow(list,act,opts={}){
+  return `<div class="cards">${list.map((c,i)=>`<button class="cw ${opts.big?'big':''} ${opts.off&&opts.off(c,i)?'off':''}" ${act?`data-act="${act}" data-arg="${i}"`:''}>${cardHTML(c)}${opts.under?opts.under(c,i):''}</button>`).join('')}</div>`;
+}
+function partsHTML(stim){
+  return `<div class="bodyparts">${PARTS.map(p=>{const s=S.parts[p];return `<div class="bp"><div class="t"><span>${PJL[p]}</span><b>Lv${s.lv}</b></div><div class="xp"><i style="width:${Math.min(100,s.xp/need(s.lv)*100)}%"></i></div><div class="small muted">次まで ${need(s.lv)-s.xp}</div>${stim&&stim[p]?`<div class="stim">刺激 +${Math.round(stim[p])}</div>`:''}</div>`}).join('')}</div>`;
 }
 function resultHTML(){
   const R=S.result;
   return `<div class="panel"><h2>${R.kind==='boss'?'大会優勝！':'勝利！'} トレーニングの成果</h2>
-   <div class="small muted">戦闘中に溜まった刺激が、部位のレベルに変わりました。</div>
-   ${partsHTML(R.stim)}
+   <div class="small muted">戦闘中に溜まった刺激が、部位のレベルに変わりました。</div>${partsHTML(R.stim)}
    <div class="list">${PARTS.filter(p=>S.parts[p].lv>R.lv0[p]).map(p=>`<div class="it">${PJL[p]} Lv${R.lv0[p]} → <b>Lv${S.parts[p].lv}</b></div>`).join('')}${R.cards.map(t=>`<div class="it">${t}</div>`).join('')}</div>
-   <button class="primary" data-act="to-reward">報酬へ</button></div>`;
+   <div><button class="primary" data-act="to-reward">報酬へ</button></div></div>`;
 }
 function rewardHTML(){
-  const R=S.reward;
-  const items=[];
+  const R=S.reward, items=[];
   items.push(R.taken.gold?`<div class="it muted">ゴールド ${R.gold} を受け取った</div>`:`<button data-act="r-gold">ゴールド ${R.gold} を受け取る</button>`);
   if(R.supp)items.push(R.taken.supp?`<div class="it muted">${esc(SUPPS[R.supp].n)} を受け取った</div>`:`<button data-act="r-supp" ${S.supps.length>=3?'disabled':''}>サプリ：${esc(SUPPS[R.supp].n)}（${esc(SUPPS[R.supp].d)}）${S.supps.length>=3?' ※いっぱい':''}</button>`);
   if(R.gear)items.push(R.taken.gear?`<div class="it muted">${esc(GEARS[R.gear].n)} を受け取った</div>`:`<button data-act="r-gear">ギア：${esc(GEARS[R.gear].n)}（${esc(GEARS[R.gear].d)}）</button>`);
   const cards=R.taken.card?`<div class="it muted">${R.taken.card==='skip'?'カードは取らなかった':'カードを取った'}</div>`:
-   `<h3>カードを1枚選ぶ</h3><div class="cardgrid">${R.cards.map((id,i)=>cardHTML({id},{act:'r-card',arg:i})).join('')}</div><button data-act="r-skip">カードを取らない</button>`;
-  return `<div class="panel"><h2>報酬</h2><div class="list">${items.join('')}</div>${cards}<button class="primary" data-act="r-done">${S.result&&S.result.kind==='boss'?'結果を見る':'マップに戻る'}</button></div>`;
+   `<h3>カードを1枚選ぶ</h3>${cardsRow(R.cards.map(id=>({id})),'r-card',{big:true})}<div><button data-act="r-skip">カードを取らない</button></div>`;
+  return `<div class="panel"><h2>報酬</h2><div class="list">${items.join('')}</div>${cards}<div><button class="primary" data-act="r-done">${S.result&&S.result.kind==='boss'?'結果を見る':'マップに戻る'}</button></div></div>`;
 }
 function restHTML(){
   const heal=Math.round(maxHp()*0.3)*(S.zma?2:1);
-  return `<div class="panel"><h2>休養日</h2><div class="muted">今日はトレーニングを休む日。どう過ごす？（1つだけ）</div>
+  return `<div class="panel" style="max-width:640px"><h2>休養日</h2><div class="muted">今日はトレーニングを休む日。どう過ごす？（1つだけ）</div><div class="choices">
    <button class="choice" data-act="rest-heal">休む<small>メンタルを${heal}回復${S.zma?'（ZMAで2倍）':''}</small></button>
    <button class="choice" data-act="rest-push">追い込み<small>好きな部位を1つ選んで、レベル+1</small></button>
-   <button class="choice" data-act="rest-remove">メニュー見直し<small>デッキからカードを1枚削除</small></button></div>`;
-}
-function partChoiceModal(title,fn){
-  PICK={part:fn};
-  openModal(`<h3>${esc(title)}</h3><div class="bodyparts">${PARTS.map(p=>`<button class="bp" data-act="pick-part" data-arg="${p}"><div class="t"><span>${PJL[p]}</span><b>Lv${partLevel(p)}</b></div></button>`).join('')}</div><button data-act="close">やめる</button>`);
+   <button class="choice" data-act="rest-remove">メニュー見直し<small>デッキからカードを1枚削除</small></button></div></div>`;
 }
 function shopHTML(){
   const sh=S.shop;
-  const card=(x,i)=>`<div class="shopitem">${cardHTML({id:x.id},{act:x.sold?'':'buy-card',arg:i,off:x.sold||S.gold<x.price})}<span class="price">${x.sold?'売り切れ':x.price+'G'}</span></div>`;
-  return `<div class="panel"><h2>マッスルショップ</h2><div class="muted small">「いらっしゃい！ 今日も仕上がってるね！」</div>
-   <h3>カード</h3><div class="cardgrid">${sh.cards.map(card).join('')}</div>
-   <h3>ギア</h3><div class="list">${sh.gears.map((g,i)=>`<button class="choice" data-act="buy-gear" data-arg="${i}" ${g.sold||S.gold<g.price?'disabled':''}>${esc(GEARS[g.id].n)}　<span class="price">${g.sold?'売り切れ':g.price+'G'}</span><small>${esc(GEARS[g.id].d)}</small></button>`).join('')||'<div class="muted small">品切れ</div>'}</div>
-   <h3>サプリ</h3><div class="list">${sh.supps.map((s,i)=>`<button class="choice" data-act="buy-supp" data-arg="${i}" ${s.sold||S.gold<s.price||S.supps.length>=3?'disabled':''}>${esc(SUPPS[s.id].n)}　<span class="price">${s.sold?'売り切れ':s.price+'G'}</span><small>${esc(SUPPS[s.id].d)}</small></button>`).join('')}</div>
-   <h3>サービス</h3><div class="list">
+  return `<div class="panel"><div class="row" style="justify-content:space-between"><h2>マッスルショップ</h2><button class="primary" data-act="leave">店を出る</button></div>
+   <div class="muted small">「いらっしゃい！ 今日も仕上がってるね！」</div>
+   ${cardsRow(sh.cards.map(x=>({id:x.id})),'buy-card',{off:(c,i)=>sh.cards[i].sold||S.gold<sh.cards[i].price,under:(c,i)=>`<span class="price">${sh.cards[i].sold?'売り切れ':sh.cards[i].price+'G'}</span>`})}
+   <div class="choices">
+    ${sh.gears.map((g,i)=>`<button class="choice" data-act="buy-gear" data-arg="${i}" ${g.sold||S.gold<g.price?'disabled':''}>ギア：${esc(GEARS[g.id].n)}　<span class="price">${g.sold?'売り切れ':g.price+'G'}</span><small>${esc(GEARS[g.id].d)}</small></button>`).join('')}
+    ${sh.supps.map((s,i)=>`<button class="choice" data-act="buy-supp" data-arg="${i}" ${s.sold||S.gold<s.price||S.supps.length>=3?'disabled':''}>サプリ：${esc(SUPPS[s.id].n)}　<span class="price">${s.sold?'売り切れ':s.price+'G'}</span><small>${esc(SUPPS[s.id].d)}</small></button>`).join('')}
     <button class="choice" data-act="buy-pt" ${sh.pt.sold||S.gold<sh.pt.price?'disabled':''}>パーソナルトレーニング　<span class="price">${sh.pt.sold?'売り切れ':sh.pt.price+'G'}</span><small>好きな部位のレベル+1</small></button>
     <button class="choice" data-act="buy-rm" ${sh.rmSold||S.gold<sh.rmPrice?'disabled':''}>カード削除　<span class="price">${sh.rmSold?'売り切れ':sh.rmPrice+'G'}</span><small>デッキからカードを1枚削除</small></button>
-   </div>
-   <button class="primary" data-act="leave">店を出る</button></div>`;
+   </div></div>`;
 }
 function eventHTML(){
   const ev=EVENTS[S.event.i];
-  if(S.event.out!=null)return `<div class="panel"><h2>${esc(ev.n)}</h2><div>${S.event.out}</div><button class="primary" data-act="leave">マップに戻る</button></div>`;
-  return `<div class="panel"><h2>${esc(ev.n)}</h2><div>${esc(ev.t)}</div>${ev.ch.map((c,i)=>`<button class="choice" data-act="ev" data-arg="${i}" ${c.can&&!c.can()?'disabled':''}>${esc(c.l)}<small>${esc(c.d)}</small></button>`).join('')}</div>`;
+  if(S.event.out!=null)return `<div class="panel" style="max-width:640px"><h2>${esc(ev.n)}</h2><div>${S.event.out}</div><div><button class="primary" data-act="leave">マップに戻る</button></div></div>`;
+  return `<div class="panel" style="max-width:640px"><h2>${esc(ev.n)}</h2><div>${esc(ev.t)}</div><div class="choices">${ev.ch.map((c,i)=>`<button class="choice" data-act="ev" data-arg="${i}" ${c.can&&!c.can()?'disabled':''}>${esc(c.l)}<small>${esc(c.d)}</small></button>`).join('')}</div></div>`;
 }
 function chestHTML(){
   const g=S.chestGear;
-  return `<div class="panel"><h2>ロッカー</h2><div class="muted">誰かが置き忘れたロッカーに、何か入っている。</div>${g?`<div class="it list"><div class="it"><b>${esc(GEARS[g].n)}</b><br><span class="small muted">${esc(GEARS[g].d)}</span></div></div><button class="gold" data-act="chest-take">受け取る</button>`:'<div class="muted">空っぽだった。</div>'}<button data-act="leave">マップに戻る</button></div>`;
+  return `<div class="panel" style="max-width:640px"><h2>ロッカー</h2><div class="muted">誰かが置き忘れたロッカーに、何か入っている。</div>${g?`<div class="list"><div class="it"><b>${esc(GEARS[g].n)}</b><br><span class="small muted">${esc(GEARS[g].d)}</span></div></div><div><button class="gold" data-act="chest-take">受け取る</button></div>`:'<div class="muted">空っぽだった。</div><div><button data-act="leave">マップに戻る</button></div>'}</div>`;
 }
-function msgModal(html){openModal(`<div>${html}</div><button class="primary" data-act="close">OK</button>`)}
 
-// ====== events wiring ======
+// ====== modals ======
+let MODAL=null, PICK=null;
+function openModal(html){MODAL=html;renderModal()}
+function closeModal(){MODAL=null;PICK=null;renderModal()}
+function renderModal(){document.getElementById('mlayer').innerHTML=MODAL?`<div class="modal" data-act="modal-bg"><div class="box" role="dialog" aria-modal="true">${MODAL}</div></div>`:''}
+function openPick(title,cards,fn){PICK={cards,fn};openModal(`<div class="row" style="justify-content:space-between"><h3>${esc(title)}</h3><button data-act="close">やめる</button></div>${cardsRow(cards,'pick')}`)}
+function deckModal(list,title){
+  const sorted=list.slice().sort((a,b)=>CARDS[a.id].t.localeCompare(CARDS[b.id].t)||a.id.localeCompare(b.id));
+  openModal(`<div class="row" style="justify-content:space-between"><h3>${title}（${list.length}枚）</h3><button data-act="close">閉じる</button></div>${cardsRow(sorted,null)}`);
+}
+function partsModal(){const C=S.combat;openModal(`<div class="row" style="justify-content:space-between"><h3>部位</h3><button data-act="close">閉じる</button></div>${partsHTML(C?C.stim:null)}${C?'<div class="small muted">黄色の数字は、この戦闘で溜まった刺激です。戦闘が終わるとレベルに変わります。</div>':''}`)}
+function gearModal(g){openModal(`<h3>${esc(GEARS[g].n)}</h3><div>${esc(GEARS[g].d)}</div><div><button data-act="close">閉じる</button></div>`)}
+function suppModal(i){const s=SUPPS[S.supps[i]];const can=S.combat||!s.combat;openModal(`<h3>${esc(s.n)}</h3><div>${esc(s.d)}</div><div class="row"><button class="primary" data-act="use-supp" data-arg="${i}" ${can?'':'disabled'}>使う</button><button data-act="discard-supp" data-arg="${i}">捨てる</button><button data-act="close">閉じる</button></div>${can?'':'<div class="small muted">戦闘中に使えます</div>'}`)}
+function partChoiceModal(title,fn){PICK={part:fn};openModal(`<div class="row" style="justify-content:space-between"><h3>${esc(title)}</h3><button data-act="close">やめる</button></div><div class="bodyparts">${PARTS.map(p=>`<button class="bp" data-act="pick-part" data-arg="${p}"><div class="t"><span>${PJL[p]}</span><b>Lv${partLevel(p)}</b></div></button>`).join('')}</div>`)}
+function msgModal(html){openModal(`<div>${html}</div><div><button class="primary" data-act="close">OK</button></div>`)}
+
+// ====== input ======
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]'); if(!el)return;
   const act=el.dataset.act, arg=el.dataset.arg;
   if(act==='modal-bg'){if(e.target===el)closeModal();return}
   switch(act){
    case 'new':newGame();closeModal();render();break;
-   case 'deck':deckModal();break;
+   case 'deck':deckModal(S.deck,'デッキ');break;
+   case 'pile':deckModal(S.combat[arg],arg==='draw'?'山札（順番はシャッフル済み）':'捨て札');break;
    case 'parts':partsModal();break;
    case 'gear':gearModal(arg);break;
    case 'supp':suppModal(+arg);break;
    case 'use-supp':useSupp(+arg);break;
    case 'discard-supp':S.supps.splice(+arg,1);closeModal();render();break;
    case 'close':closeModal();break;
+   case 'bg':if(S.combat&&S.combat.sel!=null){S.combat.sel=null;render()}break;
    case 'go':{const [r,i]=arg.split(',').map(Number);enterNode(r,i);break}
-   case 'play':playCard(+arg);break;
-   case 'target':{const C=S.combat;if(C.sel!=null)playCard(C.sel,+arg);break}
+   case 'play':{const C=S.combat,i=+arg;
+     if(C.sel!==i){C.sel=i;C.log='';render();break}
+     const id=C.hand[i].id;
+     if(needsTarget(id)&&alive().length>1){render();break}
+     playCard(i,null);break}
+   case 'target':{const C=S.combat;if(C.sel!=null&&needsTarget(C.hand[C.sel].id))playCard(C.sel,+arg);break}
    case 'end':endTurn();break;
    case 'to-reward':S.screen='reward';render();break;
    case 'r-gold':S.gold+=S.reward.gold;S.reward.taken.gold=1;render();break;
    case 'r-supp':if(addSupp(S.reward.supp))S.reward.taken.supp=1;render();break;
-   case 'r-gear':S.gears.push(S.reward.gear);S.reward.taken.gear=1;{const b=maxHp();}render();break;
+   case 'r-gear':S.gears.push(S.reward.gear);S.reward.taken.gear=1;render();break;
    case 'r-card':S.deck.push(mk(S.reward.cards[+arg]));S.reward.taken.card=1;render();break;
    case 'r-skip':S.reward.taken.card='skip';render();break;
-   case 'r-done':if(S.result&&S.result.kind==='boss'){S.screen='win'}else S.screen='map';render();break;
+   case 'r-done':S.screen=(S.result&&S.result.kind==='boss')?'win':'map';render();break;
    case 'rest-heal':S.hp=Math.min(maxHp(),S.hp+Math.round(maxHp()*0.3)*(S.zma?2:1));S.zma=false;S.screen='map';render();break;
    case 'rest-push':partChoiceModal('追い込み：鍛える部位を選ぶ',p=>{const r=gainLevels({[p]:1});S.screen='map';render();msgModal(`${PJL[p]} Lv+1`+(r.length?'<br>'+r.join('<br>'):''))});break;
    case 'rest-remove':openPick('メニュー見直し：外すカードを選ぶ',S.deck,c=>{S.deck=S.deck.filter(x=>x.uid!==c.uid);S.screen='map';return `「${vals(c.id).name}」をデッキから外した。`});break;
-   case 'pick':{const P=PICK;const c=P.cards[+arg];closeModal();const m=P.fn(c);if(S.screen==='event'&&S.event)S.event.out=m;render();if(S.screen!=='event'&&m)msgModal(m);break}
-   case 'pick-part':{const fn=PICK.part;closeModal();fn(arg);break}
+   case 'pick':{const P=PICK;if(!P||!P.cards)break;const c=P.cards[+arg];closeModal();const m=P.fn(c);if(S.screen==='event'&&S.event)S.event.out=m;render();if(S.screen!=='event'&&m)msgModal(m);break}
+   case 'pick-part':{const fn=PICK&&PICK.part;closeModal();if(fn)fn(arg);break}
    case 'ev':{const ev=EVENTS[S.event.i];const out=ev.ch[+arg].f();if(out!=null)S.event.out=out;if(S.hp<=0){S.hp=0;S.screen='dead'}render();break}
    case 'leave':S.screen='map';S.event=null;S.shop=null;render();break;
    case 'chest-take':if(S.chestGear)S.gears.push(S.chestGear);S.chestGear=null;S.screen='map';render();break;
@@ -832,7 +948,24 @@ document.addEventListener('click',e=>{
    case 'buy-rm':{const sh=S.shop;openPick('カード削除：外すカードを選ぶ',S.deck,c=>{S.gold-=sh.rmPrice;sh.rmSold=true;S.removeCount++;S.deck=S.deck.filter(x=>x.uid!==c.uid);return `「${vals(c.id).name}」をデッキから外した。`});break}
   }
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MODAL)closeModal()});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){if(MODAL)closeModal();else if(S&&S.combat&&S.combat.sel!=null){S.combat.sel=null;render()}}
+});
+
+// ====== stage fit / rotate hint ======
+let rotOk=false;
+function fit(){
+  const w=document.getElementById('wrap'), st=document.getElementById('stage'), cs=getComputedStyle(w);
+  const pl=parseFloat(cs.paddingLeft)||0, pt=parseFloat(cs.paddingTop)||0;
+  const aw=w.clientWidth-pl-(parseFloat(cs.paddingRight)||0), ah=w.clientHeight-pt-(parseFloat(cs.paddingBottom)||0);
+  const s=Math.min(aw/960,ah/540);
+  st.style.transform=`scale(${s})`; st.style.left=(pl+(aw-960*s)/2)+'px'; st.style.top=(pt+(ah-540*s)/2)+'px';
+  document.getElementById('rot').style.display=(!rotOk&&innerHeight>innerWidth*1.1)?'flex':'none';
+}
+document.getElementById('rotok').addEventListener('click',()=>{rotOk=true;fit()});
+addEventListener('resize',fit); addEventListener('orientationchange',()=>setTimeout(fit,200));
+document.getElementById('stage').innerHTML='<div id="scene"></div><div id="mlayer"></div>';
+fit();
 
 // ====== boot (keeps a running game across page updates) ======
 function start(data){
