@@ -1,0 +1,844 @@
+<title>筋肉カードゲーム 試作版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+1p:wght@500;700;800&display=swap">
+<style>
+/* Layout: one phone-width column — status bar, then the current scene (map / battle / reward…) */
+:root{
+  --bg:#16130f; --panel:#24201b; --panel2:#2f2a24; --line:#4a423a;
+  --fg:#f3ece2; --muted:#b3a79a; --dim:#7d7368;
+  --red:#d2492e; --red-l:#f1c9b8; --blue:#3e7cc4; --purple:#8a5cc0; --gold:#e9b13a;
+  --green:#6dbb6a; --orange:#e8603f; --cream:#fff6e8; --ink:#1e1a17;
+  --display:"Dela Gothic One","Hiragino Sans","Yu Gothic",sans-serif;
+  --body:"M PLUS 1p","Hiragino Sans","Yu Gothic",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-weight:500;font-size:14px;
+  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));}
+#app{max-width:560px;margin:0 auto;padding-block:8px 40px;display:flex;flex-direction:column;gap:10px}
+button{font-family:var(--body);font-weight:700;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:14px}
+button:hover{border-color:var(--muted)}
+button:focus-visible,.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--red);border-color:var(--red);color:#fff}
+button.gold{background:var(--gold);border-color:var(--gold);color:var(--ink)}
+h1,h2,h3{font-family:var(--display);font-weight:400;margin:0;text-wrap:balance}
+h2{font-size:20px} h3{font-size:16px}
+.muted{color:var(--muted)} .small{font-size:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+
+/* status bar */
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:6px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;display:inline-flex;gap:4px;align-items:center;font-variant-numeric:tabular-nums}
+.chip b{font-family:var(--display);font-weight:400}
+.chip.hp b{color:var(--green)} .chip.gold b{color:var(--gold)}
+.chip.btn{cursor:pointer}
+.supp{border-style:dashed}
+.gears{display:flex;flex-wrap:wrap;gap:4px}
+.gear{font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 6px;cursor:pointer}
+
+/* map */
+.map{position:relative;width:100%}
+.map svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;padding:0;display:grid;place-items:center;font-family:var(--display);font-size:13px;border:2px solid var(--line);background:var(--panel)}
+.node.n-enemy{color:var(--fg)} .node.n-elite{color:var(--orange);border-color:#7a3a28}
+.node.n-rest{color:var(--green)} .node.n-shop{color:var(--gold)} .node.n-event{color:#9fc3ff}
+.node.n-chest{color:var(--gold)} .node.n-boss{width:64px;height:64px;font-size:15px;color:#fff;background:var(--red);border-color:var(--red)}
+.node.avail{border-color:var(--gold);box-shadow:0 0 0 4px rgba(233,177,58,.25);animation:pulse 1.4s infinite}
+.node.done{opacity:.35}
+.node.here{background:var(--gold);color:var(--ink);opacity:1}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(233,177,58,.08)}}
+@media (prefers-reduced-motion:reduce){.node.avail{animation:none}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted)}
+
+/* battle */
+.enemies{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.enemy{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;text-align:left;cursor:default}
+.enemy.target{border-color:var(--gold);cursor:pointer}
+.enemy.dead{opacity:.3}
+.enemy .name{font-family:var(--display);font-size:15px}
+.intent{background:var(--panel2);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;flex-direction:column;gap:2px}
+.intent .q{color:var(--muted)}
+.intent .k{font-weight:800}
+.k-atk{color:#ff8f73} .k-def{color:#8fc2ff} .k-buf{color:#ffd36b} .k-deb{color:#d7a6ff}
+.hpbar{height:10px;border-radius:5px;background:#3a332d;overflow:hidden;position:relative}
+.hpbar i{position:absolute;inset:0 auto 0 0;background:var(--red)}
+.hpbar.me i{background:var(--green)}
+.hptext{font-size:12px;font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:6px}
+.st{display:flex;flex-wrap:wrap;gap:4px}
+.st span{font-size:11px;border-radius:6px;padding:1px 6px;background:var(--panel2);border:1px solid var(--line)}
+.st .blk{color:#8fc2ff;border-color:#2f5d8a}
+.me{display:flex;flex-direction:column;gap:6px}
+.energy{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#5a5048,#1f1b17);border:3px solid #bdb5ab;display:grid;place-items:center;font-family:var(--display);font-size:18px;flex:none}
+.piles{font-size:12px;color:var(--muted)}
+.hint{font-size:12px;color:var(--gold);min-height:18px}
+.log{font-size:12px;color:var(--muted);min-height:18px}
+
+/* cards */
+.hand{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.card{position:relative;background:#2b2622;border:2px solid var(--line);border-radius:12px;padding:8px 7px 7px;display:flex;flex-direction:column;gap:5px;text-align:left;color:var(--fg);min-height:170px;cursor:pointer;font-weight:500}
+.card.t-tr{border-color:var(--red)} .card.t-me{border-color:var(--blue)} .card.t-mt{border-color:var(--purple)} .card.t-cu{border-color:#555;background:#1d1a17}
+.card.sel{transform:translateY(-6px);box-shadow:0 6px 0 var(--gold)}
+.card.off{opacity:.5}
+.card .top{display:flex;gap:6px;align-items:center;min-height:30px}
+.cost{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--display);font-size:14px;background:radial-gradient(circle at 35% 35%,#55595f,#202226);border:2px solid #c7ccd2;color:#fff}
+.card .nm{font-family:var(--display);font-size:12.5px;line-height:1.15}
+.card .ty{font-size:10px;color:var(--muted);display:flex;gap:4px;align-items:center}
+.gem{width:7px;height:7px;transform:rotate(45deg);display:inline-block;flex:none}
+.gem.C{background:#cfc8bf} .gem.U{background:#7ec3ff} .gem.R{background:#ffd24a} .gem.S{background:#8a8178}
+.card .eff{background:var(--cream);color:var(--ink);border-radius:7px;padding:6px 5px;font-size:12px;font-weight:700;line-height:1.35;flex:1;display:flex;align-items:center;justify-content:center;text-align:center}
+.parts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px}
+.parts span{font-size:9.5px;text-align:center;border-radius:3px;background:#3a332d;color:#8c7f73;padding:1px 0;font-weight:800}
+.parts .p2{background:var(--red);color:#fff} .parts .p1{background:var(--red-l);color:#5e1d0f}
+.wt{display:flex;flex-direction:column;gap:2px}
+.wt .lab{font-size:10px;display:flex;justify-content:space-between;color:var(--muted);font-variant-numeric:tabular-nums}
+.wt .lab b{color:var(--fg)}
+.segs{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:1px}
+.segs i{height:4px;background:#4a423a;border-radius:1px}
+.segs i.on{background:var(--orange)}
+.badge-up{color:var(--gold);font-weight:800}
+
+/* body parts */
+.bodyparts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.bp{background:var(--panel2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px}
+.bp .t{display:flex;justify-content:space-between;align-items:baseline}
+.bp .t b{font-family:var(--display);font-weight:400;font-size:16px}
+.xp{height:6px;background:#3a332d;border-radius:3px;overflow:hidden}
+.xp i{display:block;height:100%;background:var(--gold)}
+.stim{font-size:11px;color:var(--gold)}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(10,8,6,.78);z-index:20;display:flex;align-items:flex-end;justify-content:center;
+  padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;max-height:85vh;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.list{display:flex;flex-direction:column;gap:6px}
+.list .it{background:var(--panel2);border-radius:10px;padding:8px 10px;font-size:13px}
+.choice{text-align:left;display:flex;flex-direction:column;gap:2px}
+.choice small{color:var(--muted);font-weight:500}
+.title{padding-block:24px;display:flex;flex-direction:column;gap:14px}
+.title h1{font-size:34px;line-height:1.1}
+.title h1 em{font-style:normal;color:var(--red)}
+.rules{font-size:13px;color:var(--muted);line-height:1.7}
+.price{font-family:var(--display);color:var(--gold);font-size:13px}
+.shopitem{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+</style>
+
+<div id="app"></div>
+<div id="modal"></div>
+
+<script>
+'use strict';
+// ====== data ======
+const PARTS=['chest','back','shoulder','arm','abs','leg'];
+const PJ={chest:'胸',back:'背',shoulder:'肩',arm:'腕',abs:'腹',leg:'脚'};
+const PJL={chest:'胸',back:'背中',shoulder:'肩',arm:'腕',abs:'腹',leg:'脚'};
+const EQ={barbell:'バーベル',dumbbell:'ダンベル',cable:'ケーブル',machine:'マシン',body:'自重'};
+const TY={tr:'トレーニング',me:'メンタル',mt:'メソッド',cu:'呪い'};
+const RJ={C:'コモン',U:'アンコモン',R:'レア',S:'初期'};
+
+// v = base values, u = upgraded values. d dmg, h hits, b focus, dr draw, vu 動揺, wk バテ, self 自分のメンタル減, ex 出し切り, keep キープ, eth 刹那, combo 直前同部位でもう1回
+const CARDS={
+ // starter
+ knee_pushup:{n:'膝つき腕立て伏せ',t:'tr',eq:'body',c:1,r:'S',p:{chest:2,arm:1},m:'chest',w:[10,20,2,'回'],v:{d:6},u:{d:9,n:'腕立て伏せ'}},
+ air_squat:{n:'自重スクワット',t:'tr',eq:'body',c:1,r:'S',p:{leg:2,abs:1},m:'leg',w:[15,30,2,'回'],v:{d:6},u:{d:9}},
+ back_ext:{n:'バックエクステンション',t:'tr',eq:'body',c:1,r:'S',p:{back:2},m:'back',w:[10,20,2,'回'],v:{d:6},u:{d:9}},
+ deep_breath:{n:'深呼吸',t:'me',c:1,r:'S',v:{b:5}},
+ radio:{n:'ラジオ体操',t:'tr',eq:'body',c:1,r:'S',p:{},m:'all',w:[1,2,2,'体操'],v:{d:4,radio:1},u:{d:7,radio:1}},
+ // chest
+ bench:{n:'ベンチプレス',t:'tr',eq:'barbell',c:2,r:'U',p:{chest:2,shoulder:1,arm:1},m:'chest',w:[60,100,4,'kg'],big3:1,v:{d:12,vu:2},u:{d:16,vu:3}},
+ db_fly:{n:'ダンベルフライ',t:'tr',eq:'dumbbell',c:1,r:'C',p:{chest:2},m:'chest',w:[10,16,3,'kg'],v:{d:4,h:2},u:{d:6,h:2}},
+ cable_cross:{n:'ケーブルクロスオーバー',t:'tr',eq:'cable',c:1,r:'C',p:{chest:2},m:'chest',w:[10,20,3,'kg'],v:{d:5,combo:1},u:{d:7,combo:1}},
+ chest_press:{n:'チェストプレス',t:'tr',eq:'machine',c:1,r:'C',p:{chest:2,arm:1},m:'chest',w:[40,70,3,'kg'],v:{d:6,b:3},u:{d:8,b:5}},
+ dips:{n:'ディップス',t:'tr',eq:'body',c:0,r:'U',p:{chest:1,arm:2},m:'arm',w:[8,15,3,'回'],v:{d:5,ex:1},u:{d:8,ex:1}},
+ // back
+ deadlift:{n:'デッドリフト',t:'tr',eq:'barbell',c:3,r:'R',p:{back:3,leg:2,abs:1},m:'back',w:[80,160,5,'kg'],big3:1,v:{d:20,wk:2},u:{d:26,wk:3}},
+ lat_pull:{n:'ラットプルダウン',t:'tr',eq:'machine',c:1,r:'C',p:{back:2,arm:1},m:'back',w:[40,60,4,'kg'],v:{d:6,b:3},u:{d:8,b:5}},
+ one_row:{n:'ワンハンドローイング',t:'tr',eq:'dumbbell',c:1,r:'C',p:{back:2,arm:1},m:'back',w:[16,26,3,'kg'],v:{d:4,h:2},u:{d:6,h:2}},
+ cable_row:{n:'シーテッドケーブルロー',t:'tr',eq:'cable',c:1,r:'C',p:{back:2},m:'back',w:[30,50,3,'kg'],v:{d:5,combo:1},u:{d:7,combo:1}},
+ pullup:{n:'懸垂',t:'tr',eq:'body',c:1,r:'U',p:{back:2,arm:1},m:'back',w:[3,10,3,'回'],v:{d:9},u:{d:12}},
+ // shoulder
+ sh_press:{n:'ダンベルショルダープレス',t:'tr',eq:'dumbbell',c:1,r:'C',p:{shoulder:2,arm:1},m:'shoulder',w:[12,20,3,'kg'],v:{d:4,h:2},u:{d:6,h:2}},
+ side_raise:{n:'サイドレイズ',t:'tr',eq:'dumbbell',c:1,r:'C',p:{shoulder:2},m:'shoulder',w:[6,10,2,'kg'],v:{d:3,h:3},u:{d:4,h:3}},
+ face_pull:{n:'フェイスプル',t:'tr',eq:'cable',c:1,r:'U',p:{shoulder:2,back:1},m:'shoulder',w:[15,25,3,'kg'],v:{d:5,dr:1},u:{d:6,dr:2}},
+ // arm
+ bb_curl:{n:'バーベルカール',t:'tr',eq:'barbell',c:1,r:'C',p:{arm:2},m:'arm',w:[20,35,3,'kg'],v:{d:8},u:{d:11}},
+ hammer:{n:'ハンマーカール',t:'tr',eq:'dumbbell',c:1,r:'C',p:{arm:2},m:'arm',w:[10,16,3,'kg'],v:{d:4,h:2},u:{d:6,h:2}},
+ pushdown:{n:'ケーブルプッシュダウン',t:'tr',eq:'cable',c:1,r:'C',p:{arm:2},m:'arm',w:[15,30,3,'kg'],v:{d:5,combo:1},u:{d:7,combo:1}},
+ // abs
+ crunch:{n:'クランチ',t:'tr',eq:'body',c:0,r:'C',p:{abs:2},m:'abs',w:[20,40,2,'回'],v:{d:3,b:3},u:{d:4,b:5}},
+ cable_crunch:{n:'ケーブルクランチ',t:'tr',eq:'cable',c:1,r:'C',p:{abs:2},m:'abs',w:[20,35,3,'kg'],v:{d:5,combo:1},u:{d:7,combo:1}},
+ ab_roller:{n:'アブローラー',t:'tr',eq:'body',c:1,r:'U',p:{abs:3,shoulder:1},m:'abs',w:[5,15,3,'回'],v:{d:11,ex:1},u:{d:15,ex:1}},
+ // leg
+ squat:{n:'スクワット',t:'tr',eq:'barbell',c:2,r:'U',p:{leg:3,abs:1},m:'leg',w:[80,140,4,'kg'],big3:1,v:{d:14,b:4},u:{d:18,b:6}},
+ leg_press:{n:'レッグプレス',t:'tr',eq:'machine',c:1,r:'C',p:{leg:2},m:'leg',w:[100,180,4,'kg'],v:{d:7,b:3},u:{d:10,b:4}},
+ bulgarian:{n:'ブルガリアンスクワット',t:'tr',eq:'dumbbell',c:1,r:'U',p:{leg:2,abs:1},m:'leg',w:[8,16,3,'kg'],v:{d:6,h:2,self:2},u:{d:7,h:2}},
+ // pose
+ fdb:{n:'フロントダブルバイセップス',t:'tr',eq:'body',c:2,r:'R',p:{},m:null,v:{pose:'fdb'}},
+ side_chest:{n:'サイドチェスト',t:'tr',eq:'body',c:1,r:'R',p:{},m:null,v:{pose:'sc'}},
+ // mental
+ earphone:{n:'イヤホンで遮断',t:'me',c:1,r:'C',v:{b:8}},
+ alarm:{n:'アラーム5個セット',t:'me',c:1,r:'C',v:{b:5,dr:1}},
+ interval:{n:'インターバル',t:'me',c:1,r:'C',v:{b:5,keep:1}},
+ mirror:{n:'鏡の自分を見る',t:'me',c:1,r:'U',v:{b:4,cl:'vuln'}},
+ old_photo:{n:'過去の写真と比べる',t:'me',c:0,r:'U',v:{dr:2,eth:1}},
+ talk:{n:'筋肉に話しかける',t:'me',c:1,r:'U',v:{talk:1}},
+ no_short:{n:'「近道はない」',t:'me',c:2,r:'R',v:{b:15,cl:'weak'}},
+ // method
+ whey:{n:'ホエイプロテイン',t:'mt',c:1,r:'C',v:{pw:'whey'}},
+ split:{n:'分割法',t:'mt',c:1,r:'U',v:{pw:'split'}},
+ dirty:{n:'ダーティバルク',t:'mt',c:1,r:'U',v:{pw:'dirty'}},
+ creatine:{n:'クレアチン',t:'mt',c:2,r:'U',v:{pw:'creatine'}},
+ allout:{n:'オールアウト',t:'mt',c:1,r:'R',v:{pw:'allout'}},
+ memory:{n:'マッスルメモリー',t:'mt',c:1,r:'R',v:{pw:'memory'}},
+ // curses
+ backpain:{n:'腰痛',t:'cu',c:-1,r:'S',v:{curse:'使えない。ケガの代償'}},
+ bloat:{n:'胃もたれ',t:'cu',c:-1,r:'S',v:{curse:'使えない。怪しいサプリの副作用'}},
+};
+const POOL=Object.keys(CARDS).filter(k=>['C','U','R'].includes(CARDS[k].r));
+const STARTER=['knee_pushup','knee_pushup','air_squat','air_squat','back_ext','deep_breath','deep_breath','deep_breath','deep_breath','radio'];
+
+const GEARS={
+ notebook:{n:'トレーニングノート',r:'S',d:'戦闘後、一番刺激が入った部位の刺激が+50%'},
+ shoes:{n:'マイシューズ',r:'C',d:'戦闘後にメンタル+6'},
+ wrap:{n:'リストラップ',r:'C',d:'戦闘開始時、パンプ+1'},
+ shaker:{n:'マイシェイカー',r:'C',d:'戦闘開始時、フォーカス+8'},
+ gymbag:{n:'ジムバッグ',r:'C',d:'戦闘の最初のターン、カードを2枚多く引く'},
+ mirror_g:{n:'全身鏡',r:'U',d:'戦闘開始時、一番低い部位のレベル×2のフォーカス'},
+ grip:{n:'パワーグリップ',r:'U',d:'背中のレベルが5以上なら、背中メインのカードのダメージ+2'},
+ belt:{n:'トレーニングベルト',r:'U',d:'脚と背中のレベルの合計だけ、最大メンタルが増える'},
+ hrm:{n:'心拍計',r:'U',d:'毎戦闘3ターン目の開始時、スタミナ+2'},
+ benchrack:{n:'ベンチ台',r:'R',d:'戦闘開始時、ベンチプレスの重量40kgにつきパンプ+1（デッキにベンチプレスがあるとき）'},
+};
+const GEAR_POOL=Object.keys(GEARS).filter(k=>GEARS[k].r!=='S');
+
+const SUPPS={
+ caffeine:{n:'カフェイン錠',d:'このターン、スタミナ+2',combat:1},
+ eaa:{n:'EAA',d:'メンタルを20回復',combat:0},
+ creatine_s:{n:'クレアチン',d:'このターン、パンプ+3',combat:1},
+ prewo:{n:'プレワークアウト',d:'カードを3枚引く',combat:1},
+ vitamin:{n:'マルチビタミン',d:'自分のバテ・動揺を全部消す',combat:1},
+ bcaa:{n:'BCAA',d:'フォーカス+12',combat:1},
+ zma:{n:'ZMA',d:'次の休養日の回復量が2倍',combat:0},
+ pbar:{n:'プロテインバー',d:'この戦闘の部位の刺激が1.5倍',combat:1},
+};
+
+// enemies: moves {q:台詞, a:[dmg,times], b:block, pump, wk, vu}
+const ENEMIES={
+ student:{n:'ジム初心者の大学生',hp:[36,40],moves:[{q:'「飲み会来るよね？」',a:[7,1]},{q:'「ゲームしようぜ」',a:[4,1],wk:1},{q:'「今日はサボっちゃおうぜ」',b:6}],pat:'cycle'},
+ student2:{n:'大学生の友達',hp:[22,25],moves:[{q:'「カラオケ行こ」',a:[5,1]},{q:'「ノリ悪くない？」',vu:1,a:[3,1]}],pat:'cycle'},
+ influencer:{n:'自撮りインフルエンサー',hp:[32,36],moves:[{q:'「自撮りで自信UP」',pump:2},{q:'「映えポーズ見て」',a:[8,1]},{q:'「サプリだけで痩せるよ」',a:[5,1],vu:1}],pat:'cycle'},
+ chicken:{n:'チキンレッグ',hp:[40,44],moves:[{q:'「脚の日？知らないね」',b:8,pump:1},{q:'「上半身だけ見て！」',a:[12,1]}],pat:'cycle'},
+ ojisan:{n:'プロテインおじさん',hp:[44,48],moves:[{q:'「ラーメン行こうぜ」',a:[9,1]},{q:'「昔はもっと挙げてたよ」',wk:2},{q:'「プロテインはこれ一択」',a:[5,2]}],pat:'cycle'},
+ trainer:{n:'鬼のパーソナルトレーナー',hp:[86,92],elite:1,moves:[{q:'「まだいける！」',pump:3},{q:'「フォーム崩れてるよ」',a:[10,1],vu:2},{q:'「追い込み100回！」',a:[4,4]}],pat:'cycle'},
+ youtuber:{n:'筋トレ系YouTuber',hp:[78,84],elite:1,moves:[{q:'「その重さでやってるの？」',wk:2,vu:2},{q:'「サムネ用ポーズ！」',a:[16,1]},{q:'「チャンネル登録よろしく」',b:12,pump:2}],pat:'cycle'},
+ nushi:{n:'ジムの主（ヌシ）',hp:[220,220],boss:1,moves:[{q:'「ここは俺の場所だ」',b:15,pump:2},{q:'「ベンチは渡さん」',a:[18,1]},{q:'「その重さでやってるの？」',a:[6,1],wk:2,vu:2},{q:'「主の威圧」',a:[7,3]}],pat:'cycle'},
+};
+const ENC_EASY=[['student'],['influencer'],['student2','student2']];
+const ENC_NORMAL=[['ojisan'],['chicken'],['student','student2'],['influencer','student2'],['chicken']];
+const ENC_ELITE=[['trainer'],['youtuber']];
+
+// ====== helpers ======
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let UID=1;
+const mk=id=>({uid:UID++,id});
+
+let S=null;
+
+function need(lv){return 4+2*lv}
+function partLevel(p){return S.parts[p].lv}
+
+// ====== weight / upgrade ======
+function cardLevelInfo(def){
+  if(!def.w)return null;
+  const [st,goal,req,unit]=def.w;
+  const L=def.m==='all'?Math.min(...PARTS.map(partLevel)):partLevel(def.m);
+  return {st,goal,req,unit,L,step:(goal-st)/req};
+}
+function tierOf(def){
+  const i=cardLevelInfo(def); if(!i)return 0;
+  if(i.L<i.req)return 0;
+  return def.big3?1+Math.floor((i.L-i.req)/2):1;
+}
+function fmtW(v,unit){const x=Math.round(v*2)/2;return (Number.isInteger(x)?x:x.toFixed(1))+(unit==='kg'?'kg':unit==='回'?'回':'')}
+function weightView(def){
+  const i=cardLevelInfo(def); if(!i)return null;
+  if(i.unit==='体操'){const t=tierOf(def);return {lab:t?'第2':'第1',goal:t?'':'/ 第2',frac:t?1:Math.min(1,i.L/i.req)}}
+  const cur=i.st+i.step*i.L, t=tierOf(def);
+  if(!def.big3){
+    if(t)return {lab:fmtW(cur,i.unit),goal:'',frac:1};
+    return {lab:fmtW(cur,i.unit),goal:'/ '+fmtW(i.goal,i.unit),frac:i.L/i.req};
+  }
+  const nextL=t===0?i.req:i.req+2*t, prevL=t===0?0:i.req+2*(t-1);
+  return {lab:fmtW(cur,i.unit),goal:'/ '+fmtW(i.st+i.step*nextL,i.unit),frac:(i.L-prevL)/(nextL-prevL)};
+}
+function vals(id){
+  const def=CARDS[id]; const t=tierOf(def);
+  const v=Object.assign({},def.v,t&&def.u?def.u:{});
+  if(def.big3&&t>1){v.d+=4*(t-1)}
+  v.name=(t&&def.u&&def.u.n)?def.u.n:def.n+(t?(def.big3?'+'.repeat(t):'+'):'');
+  v.tier=t;
+  return v;
+}
+
+// ====== new game ======
+function newGame(){
+  UID=1;
+  S={v:1,screen:'map',hp:80,maxBase:80,gold:99,deck:STARTER.map(mk),gears:['notebook'],supps:[],
+     parts:Object.fromEntries(PARTS.map(p=>[p,{lv:0,xp:0}])),map:genMap(),pos:null,floor:0,
+     removeCount:0,zma:false,combat:null,reward:null,shop:null,event:null,result:null,msg:null};
+}
+function maxHp(){let m=S.maxBase;if(S.gears.includes('belt'))m+=partLevel('leg')+partLevel('back');return m}
+
+// ====== map ======
+function genMap(){
+  const ROWS=15, rows=[];
+  for(let r=0;r<ROWS-1;r++){
+    const n=r===0?3:rnd(2,4); const cols=shuffle([0,1,2,3]).slice(0,n).sort((a,b)=>a-b);
+    rows.push(cols.map(c=>({r,c,type:'enemy',to:[]})));
+  }
+  rows.push([{r:ROWS-1,c:1.5,type:'boss',to:[]}]);
+  for(let r=0;r<ROWS-2;r++){
+    const cur=rows[r],nx=rows[r+1];
+    cur.forEach((a,ai)=>{
+      let cand=nx.map((b,bi)=>bi).filter(bi=>Math.abs(nx[bi].c-a.c)<=1);
+      if(!cand.length){cand=[nx.reduce((best,b,bi)=>Math.abs(b.c-a.c)<Math.abs(nx[best].c-a.c)?bi:best,0)]}
+      shuffle(cand).slice(0,Math.random()<0.4?2:1).forEach(bi=>{if(!a.to.includes(bi))a.to.push(bi)});
+    });
+    nx.forEach((b,bi)=>{
+      if(!cur.some(a=>a.to.includes(bi))){
+        const ai=cur.reduce((best,a,i)=>Math.abs(a.c-b.c)<Math.abs(cur[best].c-b.c)?i:best,0);
+        cur[ai].to.push(bi);
+      }
+    });
+  }
+  rows[ROWS-2].forEach(a=>a.to=[0]);
+  for(let r=1;r<ROWS-1;r++)rows[r].forEach(nd=>{
+    if(r===7){nd.type='chest';return}
+    if(r===13){nd.type='rest';return}
+    const opts=[['enemy',48],['event',22]];
+    if(r>=3)opts.push(['shop',8]);
+    if(r>=4)opts.push(['elite',11]);
+    if(r>=5&&r!==12)opts.push(['rest',11]);
+    let tot=opts.reduce((s,o)=>s+o[1],0),x=Math.random()*tot;
+    for(const [t,w] of opts){if((x-=w)<0){nd.type=t;break}}
+  });
+  return rows;
+}
+const NODE_LABEL={enemy:'敵',elite:'強',rest:'休',shop:'店',event:'？',chest:'箱',boss:'大会'};
+const NODE_NAME={enemy:'ライバル',elite:'強敵',rest:'休養日',shop:'マッスルショップ',event:'イベント',chest:'ロッカー',boss:'大会'};
+function availNodes(){
+  if(!S.pos)return S.map[0].map((n,i)=>[0,i]);
+  const nd=S.map[S.pos[0]][S.pos[1]];
+  return nd.to.map(i=>[S.pos[0]+1,i]);
+}
+function enterNode(r,i){
+  const nd=S.map[r][i]; S.pos=[r,i]; S.floor=r+1; nd.done=true;
+  if(nd.type==='enemy')startCombat(r<3?pick(ENC_EASY):pick(ENC_NORMAL),'normal');
+  else if(nd.type==='elite')startCombat(pick(ENC_ELITE),'elite');
+  else if(nd.type==='boss')startCombat(['nushi'],'boss');
+  else if(nd.type==='rest'){S.screen='rest'}
+  else if(nd.type==='shop'){openShop()}
+  else if(nd.type==='event'){openEvent()}
+  else if(nd.type==='chest'){const g=randomGear();S.screen='chest';S.chestGear=g}
+  render();
+}
+
+// ====== combat ======
+function startCombat(ids,kind){
+  const enemies=ids.map(id=>{const e=ENEMIES[id];const hp=rnd(e.hp[0],e.hp[1]);return {id,n:e.n,hp,max:hp,block:0,pump:0,wk:0,vu:0,mi:0}});
+  const draw=shuffle(S.deck.map(c=>({...c})));
+  const C=S.combat={kind,enemies,draw,hand:[],discard:[],exhaust:[],energy:3,turn:0,block:0,pump:0,dex:0,wk:0,vu:0,tempPump:0,
+    pw:{},stim:Object.fromEntries(PARTS.map(p=>[p,0])),stimMult:1,talk:0,last:null,sel:null,log:'',allOutUsed:false};
+  if(S.gears.includes('wrap'))C.pump+=1;
+  if(S.gears.includes('shaker'))C.startBlock=(C.startBlock||0)+8;
+  if(S.gears.includes('mirror_g'))C.startBlock=(C.startBlock||0)+2*Math.min(...PARTS.map(partLevel));
+  if(S.gears.includes('benchrack')&&S.deck.some(c=>c.id==='bench')){const w=CARDS.bench.w;const kg=w[0]+(w[1]-w[0])/w[2]*partLevel('chest');C.pump+=Math.floor(kg/40)}
+  S.screen='combat';
+  startTurn();
+}
+function drawCards(n){
+  const C=S.combat;
+  for(let k=0;k<n;k++){
+    if(!C.draw.length){if(!C.discard.length)break;C.draw=shuffle(C.discard);C.discard=[]}
+    if(C.hand.length>=10)break;
+    C.hand.push(C.draw.pop());
+  }
+}
+function startTurn(){
+  const C=S.combat; C.turn++; C.block=C.turn===1?(C.startBlock||0):0; C.energy=3; C.allOutUsed=false;
+  if(S.gears.includes('hrm')&&C.turn===3)C.energy+=2;
+  if(C.pw.whey)C.block+=3*C.pw.whey;
+  if(C.pw.dirty){C.pump+=2*C.pw.dirty;C.dex-=C.pw.dirty}
+  drawCards(5+(C.turn===1&&S.gears.includes('gymbag')?2:0));
+  C.sel=null;
+}
+function alive(){return S.combat.enemies.filter(e=>e.hp>0)}
+function curMove(e){return ENEMIES[e.id].moves[e.mi%ENEMIES[e.id].moves.length]}
+
+function baseDamage(id,v){
+  const def=CARDS[id];
+  if(v.pose==='fdb')return PARTS.reduce((s,p)=>s+partLevel(p),0);
+  if(v.pose==='sc')return (partLevel('chest')+partLevel('arm'))*2;
+  let d=v.d||0;
+  if(S.gears.includes('grip')&&def.m==='back'&&partLevel('back')>=5)d+=2;
+  return d;
+}
+function dealt(d,target){
+  const C=S.combat; d+=C.pump+C.tempPump;
+  if(C.wk>0)d=Math.floor(d*0.75);
+  if(target&&target.vu>0)d=Math.floor(d*1.5);
+  return Math.max(0,d);
+}
+function focusGain(b){return Math.max(0,b+S.combat.dex)}
+function needsTarget(id){const v=CARDS[id].v;return CARDS[id].t==='tr'||v.vu||v.wk}
+
+function cardText(id,inCombat){
+  const def=CARDS[id], v=vals(id); const L=[];
+  const C=inCombat?S.combat:null;
+  if(def.t==='cu')return v.curse;
+  if(v.pose==='fdb')L.push(`全部位のレベル合計のダメージ（今：${inCombat?dealt(baseDamage(id,v)):baseDamage(id,v)}）`);
+  else if(v.pose==='sc')L.push(`（胸＋腕のレベル）×2のダメージ（今：${inCombat?dealt(baseDamage(id,v)):baseDamage(id,v)}）`);
+  else if(v.d!=null){
+    let d=baseDamage(id,v); if(C){d=dealt(d+(C.pw.split&&C.last&&C.last.t==='tr'&&C.last.m&&def.m&&C.last.m!==def.m?3*C.pw.split:0))}
+    L.push(`${d}ダメージ${v.h>1?` × ${v.h}回`:''}`);
+  }
+  if(v.combo)L.push(`直前に${PJL[def.m]}のカードなら、もう1回`);
+  if(v.b)L.push(`フォーカス${C?focusGain(v.b):v.b}`);
+  if(v.vu)L.push(`相手に動揺${v.vu}`);
+  if(v.wk)L.push(`相手にバテ${v.wk}`);
+  if(v.dr)L.push(`カードを${v.dr}枚引く`);
+  if(v.self)L.push(`自分のメンタル-${v.self}`);
+  if(v.radio)L.push('全部位に刺激+1');
+  if(v.cl==='vuln')L.push('自分の動揺を消す');
+  if(v.cl==='weak')L.push('自分のバテを消す');
+  if(v.talk)L.push('次のトレーニングの部位の刺激が2倍');
+  if(v.pw==='whey')L.push('毎ターン、フォーカス+3');
+  if(v.pw==='split')L.push('直前と違う部位のトレーニングを使うと、ダメージ+3');
+  if(v.pw==='dirty')L.push('毎ターン、パンプ+2。ただし毎ターン、集中力-1');
+  if(v.pw==='creatine')L.push('パンプ+2');
+  if(v.pw==='allout')L.push('スタミナを使い切ったターン、カードを2枚引く');
+  if(v.pw==='memory')L.push('この戦闘の部位の刺激が2倍');
+  const kw=[]; if(v.ex)kw.push('出し切り'); if(v.keep)kw.push('キープ'); if(v.eth)kw.push('刹那');
+  if(kw.length)L.push(kw.join('・'));
+  return L.join('<br>');
+}
+
+function cardHTML(c,opts={}){
+  const def=CARDS[c.id], v=vals(c.id);
+  const cls='t-'+def.t;
+  const cost=def.c<0?'':(def.c);
+  let parts='';
+  if(def.t==='tr'&&!def.v.pose){
+    parts='<div class="parts">'+PARTS.map(p=>{const n=def.m==='all'?1:(def.p[p]||0);const k=n===0?'':(p===def.m?'p2':'p1');return `<span class="${k}">${PJ[p]}${n>1?'<br>'+'•'.repeat(n):(n?'<br>•':'<br>&nbsp;')}</span>`}).join('')+'</div>';
+  }
+  let wt='';
+  const w=weightView(def);
+  if(w){const on=Math.round(Math.min(1,Math.max(0,w.frac))*10);
+    wt=`<div class="wt"><div class="lab"><span>${def.w[3]==='回'||def.w[3]==='体操'?'回数':'重量'}</span><span><b>${w.lab}</b> ${w.goal}</span></div><div class="segs">${Array.from({length:10},(_,i)=>`<i class="${i<on?'on':''}"></i>`).join('')}</div></div>`}
+  const tyLine=`<span class="gem ${def.r}"></span>${TY[def.t]}${def.eq?'・'+EQ[def.eq]:''}`;
+  return `<button class="card ${cls} ${opts.sel?'sel':''} ${opts.off?'off':''}" ${opts.act?`data-act="${opts.act}" data-arg="${opts.arg}"`:''} aria-label="${esc(v.name)}">
+    <div class="top">${cost!==''?`<span class="cost">${cost}</span>`:''}<span class="nm">${esc(v.name)}${v.tier?' <span class="badge-up">↑</span>':''}</span></div>
+    <div class="ty">${tyLine}</div>
+    <div class="eff">${cardText(c.id,opts.combat)}</div>${parts}${wt}</button>`;
+}
+
+function playCard(hi,ti){
+  const C=S.combat, c=C.hand[hi]; if(!c)return;
+  const def=CARDS[c.id], v=vals(c.id);
+  if(def.t==='cu'){C.log='このカードは使えません';render();return}
+  if(def.c>C.energy){C.log='スタミナが足りません';render();return}
+  const al=alive();
+  let target=null;
+  if(needsTarget(c.id)){
+    if(al.length===1)target=al[0];
+    else if(ti==null){C.sel=(C.sel===hi?null:hi);C.log=C.sel==null?'':'相手を選んでください';render();return}
+    else target=C.enemies[ti];
+    if(!target||target.hp<=0)return;
+  }
+  C.energy-=def.c; C.hand.splice(hi,1); C.sel=null; C.log='';
+  // damage
+  if(def.t==='tr'){
+    let base=baseDamage(c.id,v);
+    if(C.pw.split&&C.last&&C.last.t==='tr'&&C.last.m&&def.m&&C.last.m!==def.m)base+=3*C.pw.split;
+    let hits=v.h||1;
+    if(v.combo&&C.last&&C.last.t==='tr'&&C.last.m===def.m)hits+=1;
+    for(let k=0;k<hits;k++){if(target.hp<=0)break;hitEnemy(target,dealt(base,target))}
+    // stimulus
+    let mult=C.stimMult*(C.talk?2:1); C.talk=0;
+    if(v.radio)PARTS.forEach(p=>C.stim[p]+=1*mult);
+    Object.entries(def.p||{}).forEach(([p,n])=>C.stim[p]+=n*mult);
+  }
+  if(v.b)C.block+=focusGain(v.b);
+  if(v.vu&&target)target.vu+=v.vu;
+  if(v.wk&&target)target.wk+=v.wk;
+  if(v.self){S.hp-=v.self}
+  if(v.cl==='vuln')C.vu=0;
+  if(v.cl==='weak')C.wk=0;
+  if(v.talk)C.talk=1;
+  if(v.dr)drawCards(v.dr);
+  if(v.pw){
+    if(v.pw==='creatine')C.pump+=2;
+    else if(v.pw==='memory')C.stimMult*=2;
+    else C.pw[v.pw]=(C.pw[v.pw]||0)+1;
+  }
+  C.last={t:def.t,m:def.m};
+  if(def.t==='mt'){/* powers leave play */}
+  else if(v.ex)C.exhaust.push(c); else C.discard.push(c);
+  if(C.pw.allout&&C.energy===0&&!C.allOutUsed){C.allOutUsed=true;drawCards(2*C.pw.allout)}
+  checkEnd();
+}
+function hitEnemy(e,d){
+  const b=Math.min(e.block,d); e.block-=b; e.hp=Math.max(0,e.hp-(d-b));
+}
+function checkEnd(){
+  if(S.hp<=0){S.hp=0;S.screen='dead';render();return true}
+  if(alive().length===0){endCombat();return true}
+  render();return false;
+}
+function endTurn(){
+  const C=S.combat;
+  const keep=[];
+  C.hand.forEach(c=>{const v=vals(c.id);if(v.keep)keep.push(c);else if(v.eth)C.exhaust.push(c);else C.discard.push(c)});
+  C.hand=keep; C.tempPump=0; C.sel=null;
+  if(C.wk>0)C.wk--; if(C.vu>0)C.vu--;
+  // enemy turn
+  const lines=[];
+  for(const e of alive()){
+    e.block=0;
+    const m=curMove(e);
+    if(m.a){for(let k=0;k<m.a[1];k++){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);const b=Math.min(C.block,d);C.block-=b;S.hp-=d-b}}
+    if(m.b)e.block+=m.b;
+    if(m.pump)e.pump+=m.pump;
+    if(m.wk)C.wk+=m.wk;
+    if(m.vu)C.vu+=m.vu;
+    lines.push(`${e.n}：${m.q}`);
+    e.mi++;
+    if(e.wk>0)e.wk--; if(e.vu>0)e.vu--;
+  }
+  C.log=lines.join(' ／ ');
+  if(S.hp<=0){S.hp=0;S.screen='dead';render();return}
+  startTurn(); render();
+}
+function useSupp(i){
+  const s=S.supps[i]; const C=S.combat;
+  if(s==='zma'){S.zma=true}
+  else if(s==='eaa'){S.hp=Math.min(maxHp(),S.hp+20)}
+  else{
+    if(!C)return;
+    if(s==='caffeine')C.energy+=2;
+    if(s==='creatine_s')C.tempPump+=3;
+    if(s==='prewo')drawCards(3);
+    if(s==='vitamin'){C.wk=0;C.vu=0}
+    if(s==='bcaa')C.block+=12;
+    if(s==='pbar')C.stimMult*=1.5;
+  }
+  S.supps.splice(i,1); closeModal(); render();
+}
+
+// ====== after combat ======
+function snapshotTiers(){const o={};new Set(S.deck.map(c=>c.id)).forEach(id=>o[id]=tierOf(CARDS[id]));return o}
+function weightsSnap(){const o={};new Set(S.deck.map(c=>c.id)).forEach(id=>{const w=weightView(CARDS[id]);if(w)o[id]=w.lab});return o}
+function gainLevels(add){ // add: {part: levels}
+  const t0=snapshotTiers(), w0=weightsSnap(), hp0=maxHp();
+  Object.entries(add).forEach(([p,n])=>S.parts[p].lv+=n);
+  const hp1=maxHp(); if(hp1>hp0)S.hp+=hp1-hp0;
+  return diffCards(t0,w0);
+}
+function diffCards(t0,w0){
+  const t1=snapshotTiers(), w1=weightsSnap(), out=[];
+  Object.keys(t1).forEach(id=>{
+    if(t1[id]>t0[id])out.push(`<b class="badge-up">強化！</b> ${esc(CARDS[id].n)} → ${esc(vals(id).name)}（${w1[id]||''}）`);
+    else if(w0[id]&&w1[id]!==w0[id])out.push(`${esc(vals(id).name)}：${w0[id]} → ${w1[id]}`);
+  });
+  return out;
+}
+function endCombat(){
+  const C=S.combat;
+  const stim={...C.stim};
+  if(S.gears.includes('notebook')){const top=PARTS.reduce((a,p)=>stim[p]>stim[a]?p:a,PARTS[0]);if(stim[top]>0)stim[top]=Math.round(stim[top]*1.5)}
+  const t0=snapshotTiers(), w0=weightsSnap(), hp0=maxHp();
+  const lv0=Object.fromEntries(PARTS.map(p=>[p,S.parts[p].lv]));
+  PARTS.forEach(p=>{const s=S.parts[p];s.xp+=Math.round(stim[p]);while(s.xp>=need(s.lv)){s.xp-=need(s.lv);s.lv++}});
+  const hp1=maxHp(); if(hp1>hp0)S.hp+=hp1-hp0;
+  if(S.gears.includes('shoes'))S.hp=Math.min(maxHp(),S.hp+6);
+  S.result={stim,lv0,cards:diffCards(t0,w0),kind:C.kind};
+  // rewards
+  const k=C.kind; const R={gold:k==='boss'?100:k==='elite'?rnd(25,35):rnd(10,20),cards:cardChoices(k),supp:(k!=='boss'&&Math.random()<0.4)?pick(Object.keys(SUPPS)):null,gear:k==='elite'?randomGear():null,taken:{}};
+  S.reward=R; S.combat=null; S.screen='result'; render();
+}
+function cardChoices(kind){
+  const out=[];
+  while(out.length<3){
+    let x=Math.random()*100,r;
+    if(kind==='boss')r='R'; else if(kind==='elite')r=x<50?'C':x<88?'U':'R'; else r=x<60?'C':x<95?'U':'R';
+    const c=pick(POOL.filter(id=>CARDS[id].r===r&&!out.includes(id)));
+    if(c)out.push(c);
+  }
+  return out;
+}
+function randomGear(){const left=GEAR_POOL.filter(g=>!S.gears.includes(g));return left.length?pick(left):null}
+function addSupp(s){if(S.supps.length>=3)return false;S.supps.push(s);return true}
+
+// ====== shop ======
+function openShop(){
+  const cards=[];
+  while(cards.length<5){const id=pick(POOL);if(!cards.find(c=>c.id===id))cards.push({id,price:Math.round(({C:50,U:75,R:150}[CARDS[id].r])*(0.9+Math.random()*0.2)),sold:false})}
+  const gears=[];[randomGear(),randomGear()].forEach(g=>{if(g&&!gears.find(x=>x.id===g))gears.push({id:g,price:({C:150,U:200,R:280}[GEARS[g].r]),sold:false})});
+  const supps=[pick(Object.keys(SUPPS)),pick(Object.keys(SUPPS))].map(id=>({id,price:rnd(45,70),sold:false}));
+  S.shop={cards,gears,supps,pt:{price:100,sold:false},rmPrice:100+50*S.removeCount,rmSold:false};
+  S.screen='shop';
+}
+
+// ====== events ======
+const EVENTS=[
+ {n:'ベンチが空かない',t:'ベンチプレス台に、さっきからずっとスマホを見ている人が座っている。',ch:[
+   {l:'待つ',d:'メンタル-5、カードを1枚もらう',f:()=>{S.hp-=5;const id=pick(POOL.filter(i=>CARDS[i].t==='tr'&&CARDS[i].r==='C'));S.deck.push(mk(id));return `待っている間にフォームを研究した。「${CARDS[id].n}」を手に入れた。`}},
+   {l:'別の種目をやる',d:'ランダムな部位のレベル+1',f:()=>{const p=pick(PARTS);const r=gainLevels({[p]:1});return `${PJL[p]}を鍛えた。${PJL[p]} Lv+1`+(r.length?'<br>'+r.join('<br>'):'')}},
+   {l:'帰る',d:'何も起きない',f:()=>'今日は帰ることにした。'}]},
+ {n:'怪しいサプリ売り',t:'「これ飲むだけでバキバキになるよ」ジムの前で、知らない人が声をかけてきた。',ch:[
+   {l:'買う（50ゴールド）',d:'サプリを2個。たまに副作用（呪い）',can:()=>S.gold>=50,f:()=>{S.gold-=50;const a=pick(Object.keys(SUPPS)),b=pick(Object.keys(SUPPS));const got=[a,b].filter(addSupp).map(x=>SUPPS[x].n);let m=`${got.length?got.join('と')+'を手に入れた。':'サプリがいっぱいで持てなかった。'}`;if(Math.random()<0.35){S.deck.push(mk('bloat'));m+='<br>…なんだか胃がもたれる。「胃もたれ」がデッキに入った。'}return m}},
+   {l:'断る',d:'何も起きない',f:()=>'「近道はない」と言い聞かせた。'}]},
+ {n:'筋トレ仲間の誘い',t:'「一緒にトレーニングしない？」同じ時間帯によく見かける人に声をかけられた。',ch:[
+   {l:'合トレする',d:'デッキのカードを1枚選んで、2枚にする',f:()=>{openPick('合トレ：増やすカードを選ぶ',S.deck.filter(c=>CARDS[c.id].t!=='cu'),c=>{S.deck.push(mk(c.id));return `「${CARDS[c.id].n}」が2枚になった。`});return null}},
+   {l:'断る',d:'何も起きない',f:()=>'今日は1人で集中したい。'}]},
+ {n:'プロテインの新フレーバー',t:'売店に「期間限定 ゆず塩レモン味」が並んでいる。',ch:[
+   {l:'試す',d:'メンタル+10 か -10',f:()=>{if(Math.random()<0.5){S.hp=Math.min(maxHp(),S.hp+10);return '意外とおいしい！ メンタル+10'}S.hp-=10;return 'しょっぱすぎた… メンタル-10'}},
+   {l:'定番を飲む',d:'メンタル+5',f:()=>{S.hp=Math.min(maxHp(),S.hp+5);return 'やっぱりチョコ味。メンタル+5'}}]},
+ {n:'鏡の前のポージング練習',t:'ジムの大きな鏡の前が、ちょうど空いている。',ch:[
+   {l:'練習する',d:'一番低い部位のレベル+1',f:()=>{const p=PARTS.reduce((a,x)=>partLevel(x)<partLevel(a)?x:a,PARTS[0]);const r=gainLevels({[p]:1});return `弱点の${PJL[p]}を意識した。${PJL[p]} Lv+1`+(r.length?'<br>'+r.join('<br>'):'')}},
+   {l:'写真を撮る',d:'ゴールド+30',f:()=>{S.gold+=30;return 'SNSに載せたら少しバズった。ゴールド+30'}}]},
+ {n:'ケガの予感',t:'腰に、ピキッと嫌な感じがした。',ch:[
+   {l:'無理して続ける',d:'一番高い部位のレベル+2。呪い「腰痛」を得る',f:()=>{const p=PARTS.reduce((a,x)=>partLevel(x)>partLevel(a)?x:a,PARTS[0]);const r=gainLevels({[p]:2});S.deck.push(mk('backpain'));return `${PJL[p]} Lv+2。でも腰が痛い…「腰痛」がデッキに入った。`+(r.length?'<br>'+r.join('<br>'):'')}},
+   {l:'休む',d:'メンタル+15',f:()=>{S.hp=Math.min(maxHp(),S.hp+15);return 'しっかり休んだ。メンタル+15'}}]},
+];
+function openEvent(){S.event={i:Math.floor(Math.random()*EVENTS.length),out:null};S.screen='event'}
+
+// ====== modals ======
+let MODAL=null;
+function openModal(html){MODAL=html;renderModal()}
+function closeModal(){MODAL=null;PICK=null;renderModal()}
+function renderModal(){const m=document.getElementById('modal');m.innerHTML=MODAL?`<div class="modal" data-act="modal-bg"><div class="box" role="dialog" aria-modal="true">${MODAL}</div></div>`:''}
+let PICK=null;
+function openPick(title,cards,fn){
+  PICK={cards,fn};
+  openModal(`<h3>${esc(title)}</h3><div class="cardgrid">${cards.map((c,i)=>cardHTML(c,{act:'pick',arg:i})).join('')}</div><button data-act="close">やめる</button>`);
+}
+function deckModal(){
+  const sorted=S.deck.slice().sort((a,b)=>CARDS[a.id].t.localeCompare(CARDS[b.id].t)||a.id.localeCompare(b.id));
+  openModal(`<div class="row" style="justify-content:space-between"><h3>デッキ（${S.deck.length}枚）</h3><button data-act="close">閉じる</button></div><div class="cardgrid">${sorted.map(c=>cardHTML(c)).join('')}</div>`);
+}
+function partsHTML(stim){
+  return `<div class="bodyparts">${PARTS.map(p=>{const s=S.parts[p];return `<div class="bp"><div class="t"><span>${PJL[p]}</span><b>Lv${s.lv}</b></div><div class="xp"><i style="width:${Math.min(100,s.xp/need(s.lv)*100)}%"></i></div><div class="small muted">次まで ${need(s.lv)-s.xp}</div>${stim&&stim[p]?`<div class="stim">刺激 +${Math.round(stim[p])}</div>`:''}</div>`}).join('')}</div>`;
+}
+function partsModal(){
+  const C=S.combat;
+  openModal(`<div class="row" style="justify-content:space-between"><h3>部位</h3><button data-act="close">閉じる</button></div>${partsHTML(C?C.stim:null)}${C?'<div class="small muted">黄色の数字は、この戦闘で溜まった刺激です。戦闘が終わるとレベルに変わります。</div>':''}`);
+}
+function gearModal(g){openModal(`<h3>${esc(GEARS[g].n)}</h3><div>${esc(GEARS[g].d)}</div><button data-act="close">閉じる</button>`)}
+function suppModal(i){const s=SUPPS[S.supps[i]];const can=S.combat||!s.combat;openModal(`<h3>${esc(s.n)}</h3><div>${esc(s.d)}</div><div class="row"><button class="primary" data-act="use-supp" data-arg="${i}" ${can?'':'disabled'}>使う</button><button data-act="discard-supp" data-arg="${i}">捨てる</button><button data-act="close">閉じる</button></div>${can?'':'<div class="small muted">戦闘中に使えます</div>'}`)}
+
+// ====== render ======
+function bar(){
+  return `<div class="bar">
+   <span class="chip hp">メンタル <b>${S.hp}/${maxHp()}</b></span>
+   <span class="chip gold">ゴールド <b>${S.gold}</b></span>
+   <span class="chip">${S.floor?S.floor+'階':'スタート'}</span>
+   <button class="chip btn" data-act="deck">デッキ ${S.deck.length}</button>
+   <button class="chip btn" data-act="parts">部位</button>
+   ${[0,1,2].map(i=>S.supps[i]?`<button class="chip btn supp" data-act="supp" data-arg="${i}">${esc(SUPPS[S.supps[i]].n)}</button>`:'').join('')}
+   <div class="gears">${S.gears.map(g=>`<button class="gear" data-act="gear" data-arg="${g}">${esc(GEARS[g].n)}</button>`).join('')}</div>
+  </div>`;
+}
+function render(){
+  const app=document.getElementById('app');
+  if(!S){app.innerHTML=titleHTML();return}
+  let h=bar();
+  const sc=S.screen;
+  if(sc==='map')h+=mapHTML();
+  else if(sc==='combat')h+=combatHTML();
+  else if(sc==='result')h+=resultHTML();
+  else if(sc==='reward')h+=rewardHTML();
+  else if(sc==='rest')h+=restHTML();
+  else if(sc==='shop')h+=shopHTML();
+  else if(sc==='event')h+=eventHTML();
+  else if(sc==='chest')h+=chestHTML();
+  else if(sc==='dead')h+=`<div class="panel title"><h1>心が折れた…</h1><div class="muted">${S.floor}階で力尽きた。誘惑に負けた日もある。また明日から頑張ろう。</div>${partsHTML()}<button class="primary" data-act="new">もう一度挑戦する</button></div>`;
+  else if(sc==='win')h+=`<div class="panel title"><h1>1章 <em>クリア！</em></h1><div class="muted">ジムの主を倒し、近所のジムで一目置かれる存在になった。（試作版はここまで）</div>${partsHTML()}<div class="small muted">デッキ ${S.deck.length}枚／ギア ${S.gears.length}個</div><button class="primary" data-act="new">最初から遊ぶ</button></div>`;
+  app.innerHTML=h;
+  if(sc==='map'){const el=document.querySelector('.node.avail');if(el)el.scrollIntoView({block:'center'})}
+}
+function titleHTML(){
+  return `<div class="panel title">
+   <div class="muted small">試作版・1章「近所のジム」</div>
+   <h1>筋肉<em>カード</em>ゲーム</h1>
+   <div class="rules">
+    ・ボディビルダーで、ライバルの誘惑に打ち勝ちながら大会（ボス）を目指します。<br>
+    ・毎ターン<b>スタミナ3</b>でカードを使います。トレーニングカードで相手のメンタルを削り、メンタルカードでフォーカス（守り）を得ます。<br>
+    ・トレーニングすると部位に<b>刺激</b>が溜まり、戦闘後に<b>部位レベル</b>が上がります。レベルが上がると重量が上がり、目標に届くとカードが<b>強化</b>されます。<br>
+    ・マップは下から上へ。分かれ道から進む道を選びます。
+   </div>
+   <button class="primary" data-act="new">はじめる</button>
+  </div>`;
+}
+function mapHTML(){
+  const ROWH=66, H=15*ROWH+30;
+  const X=c=>((c+0.5)/4*100);
+  const Y=r=>(14-r)*ROWH+36;
+  const av=availNodes().map(a=>a.join(','));
+  let lines='', nodes='';
+  S.map.forEach((row,r)=>row.forEach((nd,i)=>{
+    nd.to.forEach(j=>{const b=S.map[r+1][j];const on=S.pos&&S.pos[0]===r&&S.pos[1]===i;lines+=`<line x1="${X(nd.c)}%" y1="${Y(r)}" x2="${X(b.c)}%" y2="${Y(r+1)}" stroke="${on?'#e9b13a':'#4a423a'}" stroke-width="${on?3:2}" stroke-dasharray="${on?'':'4 5'}"/>`});
+    const isAv=av.includes(r+','+i), here=S.pos&&S.pos[0]===r&&S.pos[1]===i;
+    nodes+=`<button class="node n-${nd.type} ${isAv?'avail':''} ${nd.done?'done':''} ${here?'here':''}" style="left:${X(nd.c)}%;top:${Y(r)}px" ${isAv?`data-act="go" data-arg="${r},${i}"`:'disabled'} aria-label="${NODE_NAME[nd.type]}">${NODE_LABEL[nd.type]}</button>`;
+  }));
+  return `<div class="panel"><div class="row" style="justify-content:space-between"><h2>1章 近所のジム</h2><span class="muted small">光っているマスを選ぶ</span></div>
+   <div class="legend">${Object.keys(NODE_NAME).map(k=>`<span>${NODE_LABEL[k]}＝${NODE_NAME[k]}</span>`).join('')}</div>
+   <div class="map" style="height:${H}px"><svg aria-hidden="true">${lines}</svg>${nodes}</div></div>`;
+}
+function stHTML(o,isMe){
+  const a=[];
+  if(o.block)a.push(`<span class="blk">フォーカス ${o.block}</span>`);
+  const pump=o.pump+(isMe?o.tempPump:0);
+  if(pump)a.push(`<span>パンプ ${pump}</span>`);
+  if(isMe&&o.dex)a.push(`<span>集中力 ${o.dex}</span>`);
+  if(o.wk)a.push(`<span>バテ ${o.wk}</span>`);
+  if(o.vu)a.push(`<span>動揺 ${o.vu}</span>`);
+  if(isMe){Object.entries(o.pw).forEach(([k,n])=>a.push(`<span>${({whey:'ホエイ',split:'分割法',dirty:'ダーティバルク',allout:'オールアウト'})[k]}${n>1?'×'+n:''}</span>`));if(o.stimMult>1)a.push(`<span>刺激×${o.stimMult}</span>`);if(o.talk)a.push('<span>次の刺激×2</span>')}
+  return `<div class="st">${a.join('')}</div>`;
+}
+function intentHTML(e){
+  const m=curMove(e), C=S.combat; const parts=[];
+  if(m.a){let d=m.a[0]+e.pump;if(e.wk>0)d=Math.floor(d*0.75);if(C.vu>0)d=Math.floor(d*1.5);parts.push(`<span class="k k-atk">誘惑 ${d}${m.a[1]>1?'×'+m.a[1]:''}</span>`)}
+  if(m.b)parts.push(`<span class="k k-def">フォーカス ${m.b}</span>`);
+  if(m.pump)parts.push(`<span class="k k-buf">パンプアップ +${m.pump}</span>`);
+  if(m.wk||m.vu)parts.push(`<span class="k k-deb">煽り${m.wk?' バテ'+m.wk:''}${m.vu?' 動揺'+m.vu:''}</span>`);
+  return `<div class="intent"><span class="q">次：${esc(m.q)}</span><div class="row" style="gap:8px">${parts.join('')}</div></div>`;
+}
+function combatHTML(){
+  const C=S.combat; const targeting=C.sel!=null;
+  const en=C.enemies.map((e,i)=>`<button class="enemy ${e.hp<=0?'dead':''} ${targeting&&e.hp>0?'target':''}" ${targeting&&e.hp>0?`data-act="target" data-arg="${i}"`:'tabindex="-1"'}>
+    <span class="name">${esc(e.n)}</span>
+    <div class="hptext"><span>メンタル</span><span>${e.hp}/${e.max}</span></div><div class="hpbar"><i style="width:${e.hp/e.max*100}%"></i></div>
+    ${stHTML(e,false)}${e.hp>0?intentHTML(e):''}</button>`).join('');
+  const hand=C.hand.map((c,i)=>cardHTML(c,{act:'play',arg:i,sel:C.sel===i,off:CARDS[c.id].c>C.energy||CARDS[c.id].t==='cu',combat:true})).join('');
+  return `<div class="enemies">${en}</div>
+   <div class="panel me">
+    <div class="row" style="justify-content:space-between;align-items:center">
+     <div class="row"><div class="energy" aria-label="スタミナ">${C.energy}/3</div><div style="display:flex;flex-direction:column;gap:2px"><b>ボディビルダー</b><span class="piles">山札 ${C.draw.length}／捨て札 ${C.discard.length}／出し切り ${C.exhaust.length}</span></div></div>
+     <button class="primary" data-act="end">ターン終了</button>
+    </div>
+    <div class="hptext"><span>メンタル</span><span>${S.hp}/${maxHp()}</span></div><div class="hpbar me"><i style="width:${S.hp/maxHp()*100}%"></i></div>
+    ${stHTML(C,true)}
+    <div class="hint">${esc(C.log||'')}</div>
+   </div>
+   <div class="hand">${hand||'<div class="muted">手札がありません</div>'}</div>`;
+}
+function resultHTML(){
+  const R=S.result;
+  return `<div class="panel"><h2>${R.kind==='boss'?'大会優勝！':'勝利！'} トレーニングの成果</h2>
+   <div class="small muted">戦闘中に溜まった刺激が、部位のレベルに変わりました。</div>
+   ${partsHTML(R.stim)}
+   <div class="list">${PARTS.filter(p=>S.parts[p].lv>R.lv0[p]).map(p=>`<div class="it">${PJL[p]} Lv${R.lv0[p]} → <b>Lv${S.parts[p].lv}</b></div>`).join('')}${R.cards.map(t=>`<div class="it">${t}</div>`).join('')}</div>
+   <button class="primary" data-act="to-reward">報酬へ</button></div>`;
+}
+function rewardHTML(){
+  const R=S.reward;
+  const items=[];
+  items.push(R.taken.gold?`<div class="it muted">ゴールド ${R.gold} を受け取った</div>`:`<button data-act="r-gold">ゴールド ${R.gold} を受け取る</button>`);
+  if(R.supp)items.push(R.taken.supp?`<div class="it muted">${esc(SUPPS[R.supp].n)} を受け取った</div>`:`<button data-act="r-supp" ${S.supps.length>=3?'disabled':''}>サプリ：${esc(SUPPS[R.supp].n)}（${esc(SUPPS[R.supp].d)}）${S.supps.length>=3?' ※いっぱい':''}</button>`);
+  if(R.gear)items.push(R.taken.gear?`<div class="it muted">${esc(GEARS[R.gear].n)} を受け取った</div>`:`<button data-act="r-gear">ギア：${esc(GEARS[R.gear].n)}（${esc(GEARS[R.gear].d)}）</button>`);
+  const cards=R.taken.card?`<div class="it muted">${R.taken.card==='skip'?'カードは取らなかった':'カードを取った'}</div>`:
+   `<h3>カードを1枚選ぶ</h3><div class="cardgrid">${R.cards.map((id,i)=>cardHTML({id},{act:'r-card',arg:i})).join('')}</div><button data-act="r-skip">カードを取らない</button>`;
+  return `<div class="panel"><h2>報酬</h2><div class="list">${items.join('')}</div>${cards}<button class="primary" data-act="r-done">${S.result&&S.result.kind==='boss'?'結果を見る':'マップに戻る'}</button></div>`;
+}
+function restHTML(){
+  const heal=Math.round(maxHp()*0.3)*(S.zma?2:1);
+  return `<div class="panel"><h2>休養日</h2><div class="muted">今日はトレーニングを休む日。どう過ごす？（1つだけ）</div>
+   <button class="choice" data-act="rest-heal">休む<small>メンタルを${heal}回復${S.zma?'（ZMAで2倍）':''}</small></button>
+   <button class="choice" data-act="rest-push">追い込み<small>好きな部位を1つ選んで、レベル+1</small></button>
+   <button class="choice" data-act="rest-remove">メニュー見直し<small>デッキからカードを1枚削除</small></button></div>`;
+}
+function partChoiceModal(title,fn){
+  PICK={part:fn};
+  openModal(`<h3>${esc(title)}</h3><div class="bodyparts">${PARTS.map(p=>`<button class="bp" data-act="pick-part" data-arg="${p}"><div class="t"><span>${PJL[p]}</span><b>Lv${partLevel(p)}</b></div></button>`).join('')}</div><button data-act="close">やめる</button>`);
+}
+function shopHTML(){
+  const sh=S.shop;
+  const card=(x,i)=>`<div class="shopitem">${cardHTML({id:x.id},{act:x.sold?'':'buy-card',arg:i,off:x.sold||S.gold<x.price})}<span class="price">${x.sold?'売り切れ':x.price+'G'}</span></div>`;
+  return `<div class="panel"><h2>マッスルショップ</h2><div class="muted small">「いらっしゃい！ 今日も仕上がってるね！」</div>
+   <h3>カード</h3><div class="cardgrid">${sh.cards.map(card).join('')}</div>
+   <h3>ギア</h3><div class="list">${sh.gears.map((g,i)=>`<button class="choice" data-act="buy-gear" data-arg="${i}" ${g.sold||S.gold<g.price?'disabled':''}>${esc(GEARS[g.id].n)}　<span class="price">${g.sold?'売り切れ':g.price+'G'}</span><small>${esc(GEARS[g.id].d)}</small></button>`).join('')||'<div class="muted small">品切れ</div>'}</div>
+   <h3>サプリ</h3><div class="list">${sh.supps.map((s,i)=>`<button class="choice" data-act="buy-supp" data-arg="${i}" ${s.sold||S.gold<s.price||S.supps.length>=3?'disabled':''}>${esc(SUPPS[s.id].n)}　<span class="price">${s.sold?'売り切れ':s.price+'G'}</span><small>${esc(SUPPS[s.id].d)}</small></button>`).join('')}</div>
+   <h3>サービス</h3><div class="list">
+    <button class="choice" data-act="buy-pt" ${sh.pt.sold||S.gold<sh.pt.price?'disabled':''}>パーソナルトレーニング　<span class="price">${sh.pt.sold?'売り切れ':sh.pt.price+'G'}</span><small>好きな部位のレベル+1</small></button>
+    <button class="choice" data-act="buy-rm" ${sh.rmSold||S.gold<sh.rmPrice?'disabled':''}>カード削除　<span class="price">${sh.rmSold?'売り切れ':sh.rmPrice+'G'}</span><small>デッキからカードを1枚削除</small></button>
+   </div>
+   <button class="primary" data-act="leave">店を出る</button></div>`;
+}
+function eventHTML(){
+  const ev=EVENTS[S.event.i];
+  if(S.event.out!=null)return `<div class="panel"><h2>${esc(ev.n)}</h2><div>${S.event.out}</div><button class="primary" data-act="leave">マップに戻る</button></div>`;
+  return `<div class="panel"><h2>${esc(ev.n)}</h2><div>${esc(ev.t)}</div>${ev.ch.map((c,i)=>`<button class="choice" data-act="ev" data-arg="${i}" ${c.can&&!c.can()?'disabled':''}>${esc(c.l)}<small>${esc(c.d)}</small></button>`).join('')}</div>`;
+}
+function chestHTML(){
+  const g=S.chestGear;
+  return `<div class="panel"><h2>ロッカー</h2><div class="muted">誰かが置き忘れたロッカーに、何か入っている。</div>${g?`<div class="it list"><div class="it"><b>${esc(GEARS[g].n)}</b><br><span class="small muted">${esc(GEARS[g].d)}</span></div></div><button class="gold" data-act="chest-take">受け取る</button>`:'<div class="muted">空っぽだった。</div>'}<button data-act="leave">マップに戻る</button></div>`;
+}
+function msgModal(html){openModal(`<div>${html}</div><button class="primary" data-act="close">OK</button>`)}
+
+// ====== events wiring ======
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el)return;
+  const act=el.dataset.act, arg=el.dataset.arg;
+  if(act==='modal-bg'){if(e.target===el)closeModal();return}
+  switch(act){
+   case 'new':newGame();closeModal();render();break;
+   case 'deck':deckModal();break;
+   case 'parts':partsModal();break;
+   case 'gear':gearModal(arg);break;
+   case 'supp':suppModal(+arg);break;
+   case 'use-supp':useSupp(+arg);break;
+   case 'discard-supp':S.supps.splice(+arg,1);closeModal();render();break;
+   case 'close':closeModal();break;
+   case 'go':{const [r,i]=arg.split(',').map(Number);enterNode(r,i);break}
+   case 'play':playCard(+arg);break;
+   case 'target':{const C=S.combat;if(C.sel!=null)playCard(C.sel,+arg);break}
+   case 'end':endTurn();break;
+   case 'to-reward':S.screen='reward';render();break;
+   case 'r-gold':S.gold+=S.reward.gold;S.reward.taken.gold=1;render();break;
+   case 'r-supp':if(addSupp(S.reward.supp))S.reward.taken.supp=1;render();break;
+   case 'r-gear':S.gears.push(S.reward.gear);S.reward.taken.gear=1;{const b=maxHp();}render();break;
+   case 'r-card':S.deck.push(mk(S.reward.cards[+arg]));S.reward.taken.card=1;render();break;
+   case 'r-skip':S.reward.taken.card='skip';render();break;
+   case 'r-done':if(S.result&&S.result.kind==='boss'){S.screen='win'}else S.screen='map';render();break;
+   case 'rest-heal':S.hp=Math.min(maxHp(),S.hp+Math.round(maxHp()*0.3)*(S.zma?2:1));S.zma=false;S.screen='map';render();break;
+   case 'rest-push':partChoiceModal('追い込み：鍛える部位を選ぶ',p=>{const r=gainLevels({[p]:1});S.screen='map';render();msgModal(`${PJL[p]} Lv+1`+(r.length?'<br>'+r.join('<br>'):''))});break;
+   case 'rest-remove':openPick('メニュー見直し：外すカードを選ぶ',S.deck,c=>{S.deck=S.deck.filter(x=>x.uid!==c.uid);S.screen='map';return `「${vals(c.id).name}」をデッキから外した。`});break;
+   case 'pick':{const P=PICK;const c=P.cards[+arg];closeModal();const m=P.fn(c);if(S.screen==='event'&&S.event)S.event.out=m;render();if(S.screen!=='event'&&m)msgModal(m);break}
+   case 'pick-part':{const fn=PICK.part;closeModal();fn(arg);break}
+   case 'ev':{const ev=EVENTS[S.event.i];const out=ev.ch[+arg].f();if(out!=null)S.event.out=out;if(S.hp<=0){S.hp=0;S.screen='dead'}render();break}
+   case 'leave':S.screen='map';S.event=null;S.shop=null;render();break;
+   case 'chest-take':if(S.chestGear)S.gears.push(S.chestGear);S.chestGear=null;S.screen='map';render();break;
+   case 'buy-card':{const x=S.shop.cards[+arg];if(x.sold||S.gold<x.price)break;S.gold-=x.price;x.sold=true;S.deck.push(mk(x.id));render();break}
+   case 'buy-gear':{const x=S.shop.gears[+arg];if(x.sold||S.gold<x.price)break;S.gold-=x.price;x.sold=true;S.gears.push(x.id);render();break}
+   case 'buy-supp':{const x=S.shop.supps[+arg];if(x.sold||S.gold<x.price||S.supps.length>=3)break;S.gold-=x.price;x.sold=true;addSupp(x.id);render();break}
+   case 'buy-pt':{const sh=S.shop;partChoiceModal('パーソナルトレーニング：鍛える部位を選ぶ',p=>{sh.pt.sold=true;S.gold-=sh.pt.price;const r=gainLevels({[p]:1});render();msgModal(`トレーナーと${PJL[p]}を集中的に鍛えた。${PJL[p]} Lv+1`+(r.length?'<br>'+r.join('<br>'):''))});break}
+   case 'buy-rm':{const sh=S.shop;openPick('カード削除：外すカードを選ぶ',S.deck,c=>{S.gold-=sh.rmPrice;sh.rmSold=true;S.removeCount++;S.deck=S.deck.filter(x=>x.uid!==c.uid);return `「${vals(c.id).name}」をデッキから外した。`});break}
+  }
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MODAL)closeModal()});
+
+// ====== boot (keeps a running game across page updates) ======
+function start(data){
+  try{if(data&&data.S&&data.S.v===1){S=data.S;UID=data.UID||1000}}catch(_){S=null}
+  render();
+}
+window.claude?.hot?.snapshot?.(()=>({S,UID}));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
